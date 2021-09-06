@@ -1,175 +1,233 @@
-// GameCenter.cpp : Defines the entry point for the application.
-//
-
 #include "framework.h"
 #include "GameCenter.h"
+#include <stdio.h>
+#include <commdlg.h>
+#include <winsock2.h>
+#include "Reversi.h"
 
-#define MAX_LOADSTRING 100
+#define	WM_ACCEPT			(WM_USER+1)
+#define	WM_CLIENT			(WM_USER+2)
+
+#define	WIDTH		640
+#define	HEIGHT		440
 
 // Global Variables:
-HINSTANCE hInst;                                // current instance
-WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
-WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+HINSTANCE hInst;								// current instance
+SOCKET hListen = INVALID_SOCKET;
+SOCKET hClient[2] = { INVALID_SOCKET, INVALID_SOCKET };
+bool bListenWait = true;
+HDC memDC;
+Reversi game;
 
 // Forward declarations of functions included in this code module:
-ATOM                MyRegisterClass(HINSTANCE hInstance);
-BOOL                InitInstance(HINSTANCE, int);
-LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+ATOM				MyRegisterClass(HINSTANCE hInstance);
+HWND				InitInstance(HINSTANCE, int);
+LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPWSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow)
 {
-    UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
+	//	WSA network initialize
+	WSADATA wsa;
+	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return FALSE;
 
-    // TODO: Place code here.
+	// Initialize global strings
+	MyRegisterClass(hInstance);
 
-    // Initialize global strings
-    LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
-    LoadStringW(hInstance, IDC_GAMECENTER, szWindowClass, MAX_LOADSTRING);
-    MyRegisterClass(hInstance);
+	// Perform application initialization:
+	HWND hWnd = InitInstance(hInstance, nCmdShow);
+	if(!hWnd) return FALSE;
 
-    // Perform application initialization:
-    if (!InitInstance (hInstance, nCmdShow))
-    {
-        return FALSE;
-    }
+	//	Make listen socket
+	hListen = socket(AF_INET, SOCK_STREAM, 0);
+	if (hListen == INVALID_SOCKET) return FALSE;
 
-    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_GAMECENTER));
+	SOCKADDR_IN addr;
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.sin_port = htons(8888);
+	bind(hListen, (SOCKADDR*)&addr, sizeof(addr));
 
-    MSG msg;
+	listen(hListen, 1);
+	WSAEventSelect(hListen, hWnd, FD_ACCEPT);
 
-    // Main message loop:
-    while (GetMessage(&msg, nullptr, 0, 0))
-    {
-        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-        {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-    }
+	// Main message loop:
+	MSG msg;
+	while (GetMessage(&msg, NULL, 0, 0))
+	{
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
 
-    return (int) msg.wParam;
+	closesocket(hListen);
+
+	WSACleanup();
+
+	return (int)msg.wParam;
 }
 
-//
-//  FUNCTION: MyRegisterClass()
-//
-//  PURPOSE: Registers the window class.
-//
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
-    WNDCLASSEXW wcex;
+	WNDCLASSEX wcex;
 
-    wcex.cbSize = sizeof(WNDCLASSEX);
+	wcex.cbSize = sizeof(WNDCLASSEX);
 
-    wcex.style          = CS_HREDRAW | CS_VREDRAW;
-    wcex.lpfnWndProc    = WndProc;
-    wcex.cbClsExtra     = 0;
-    wcex.cbWndExtra     = 0;
-    wcex.hInstance      = hInstance;
-    wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_GAMECENTER));
-    wcex.hCursor        = LoadCursor(nullptr, IDC_ARROW);
-    wcex.hbrBackground  = (HBRUSH)(COLOR_WINDOW+1);
-    wcex.lpszMenuName   = MAKEINTRESOURCEW(IDC_GAMECENTER);
-    wcex.lpszClassName  = szWindowClass;
-    wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = 0;
+	wcex.hInstance = hInstance;
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_GAMECENTER));
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	wcex.lpszMenuName = MAKEINTRESOURCE(IDC_GAMECENTER);
+	wcex.lpszClassName = L"ReversiGC";
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
-    return RegisterClassExW(&wcex);
+	return RegisterClassEx(&wcex);
 }
 
-//
-//   FUNCTION: InitInstance(HINSTANCE, int)
-//
-//   PURPOSE: Saves instance handle and creates main window
-//
-//   COMMENTS:
-//
-//        In this function, we save the instance handle in a global variable and
-//        create and display the main program window.
-//
-BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+HWND InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-    hInst = hInstance; // Store instance handle in our global variable
+	hInst = hInstance; // Store instance handle in our global variable
 
-    HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+	RECT rt = { 0, 0, Reversi::GetWidth(), Reversi::GetHeight() };
+	AdjustWindowRect(&rt, WS_OVERLAPPEDWINDOW, TRUE);
 
-    if (!hWnd) return FALSE;
+	HWND hWnd = CreateWindow(L"ReversiGC", L"Reversi Game Center", 
+		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, rt.right - rt.left, rt.bottom - rt.top, 
+		NULL, NULL, hInstance, NULL);
 
-    ShowWindow(hWnd, nCmdShow);
-    UpdateWindow(hWnd);
+	if(!hWnd) return 0;
 
-    return TRUE;
+	ShowWindow(hWnd, nCmdShow);
+	UpdateWindow(hWnd);
+
+	return hWnd;
 }
 
-//
-//  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
-//
-//  PURPOSE: Processes messages for the main window.
-//
-//  WM_COMMAND  - process the application menu
-//  WM_PAINT    - Paint the main window
-//  WM_DESTROY  - post a quit message and return
-//
-//
+void OnAccept(HWND hWnd)
+{
+	SOCKADDR_IN addr;
+	int len = sizeof(addr);
+	if(game.GetStatus() > Reversi::READY1) return;
+	if(game.GetStatus() == Reversi::READY)
+	{
+		hClient[0] = accept(hListen, (SOCKADDR*)&addr, &len);
+		game.SetStatus(Reversi::READY1);
+	}
+	else
+	{
+		hClient[1] = accept(hListen, (SOCKADDR*)&addr, &len);
+		WSAEventSelect(hClient[0], hWnd, FD_READ | FD_CLOSE);
+		WSAEventSelect(hClient[1], hWnd, FD_READ | FD_CLOSE);
+	}
+
+	InvalidateRect(hWnd, 0, FALSE);
+}
+
+void OnClient(HWND hWnd)
+{
+#if 0
+	if (hClient == INVALID_SOCKET) return;
+	char buf[1024];
+	int len = recv(hClient, buf, 1024, 0);
+	if (len <= 0)
+	{
+		closesocket(hClient);
+		hClient = INVALID_SOCKET;
+		return;
+	}
+
+	int dir = -1;
+	if (buf[0] == 'N') dir = 0;
+	else if (buf[0] == 'E') dir = 1;
+	else if (buf[0] == 'S') dir = 2;
+	else if (buf[0] == 'W') dir = 3;
+	bool v = (dir != -1) ? kMaze.Move(dir) : true;
+	if (v == false) send(hClient, "0 0 0 0 0", 9, 0);
+	else
+	{
+		Sleep(100);
+		const char* buf = kMaze.GetCell();
+		send(hClient, buf, 9, 0);
+		InvalidateRect(hWnd, 0, FALSE);
+	}
+#endif
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    switch (message)
-    {
-    case WM_COMMAND:
-        {
-            int wmId = LOWORD(wParam);
-            // Parse the menu selections:
-            switch (wmId)
-            {
-            case IDM_ABOUT:
-                DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-                break;
-            case IDM_EXIT:
-                DestroyWindow(hWnd);
-                break;
-            default:
-                return DefWindowProc(hWnd, message, wParam, lParam);
-            }
-        }
-        break;
-    case WM_PAINT:
-        {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hWnd, &ps);
-            // TODO: Add any drawing code that uses hdc here...
-            EndPaint(hWnd, &ps);
-        }
-        break;
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        break;
-    default:
-        return DefWindowProc(hWnd, message, wParam, lParam);
-    }
-    return 0;
+	int wmId, wmEvent;
+	PAINTSTRUCT ps;
+	HDC hdc;
+
+	switch (message)
+	{
+		case WM_CREATE:
+		{
+			HDC hdc = GetDC(hWnd);
+			HBITMAP hBitmap = CreateCompatibleBitmap(hdc, 620, 440);
+			memDC = CreateCompatibleDC(hdc);
+			SelectObject(memDC, hBitmap);
+			ReleaseDC(hWnd, hdc);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			wmId = LOWORD(wParam);
+			wmEvent = HIWORD(wParam);
+			// Parse the menu selections:
+			switch (wmId)
+			{
+			case IDM_ABOUT:
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+				break;
+			case IDM_EXIT:
+				DestroyWindow(hWnd);
+				break;
+			default:
+				return DefWindowProc(hWnd, message, wParam, lParam);
+			}
+			break;
+		}
+		case WM_PAINT:
+		{
+			hdc = BeginPaint(hWnd, &ps);
+			HGDIOBJ oldObj = SelectObject(memDC, GetStockObject(NULL_PEN));
+			Rectangle(memDC, 0, 0, WIDTH, HEIGHT);
+			SelectObject(memDC, oldObj);
+			game.Draw(memDC);
+			BitBlt(hdc, 0, 0, WIDTH, HEIGHT, memDC, 0, 0, SRCCOPY);
+			EndPaint(hWnd, &ps);
+			break;
+		}
+		case WM_DESTROY:
+			PostQuitMessage(0);
+			break;
+		case WM_ACCEPT:
+			OnAccept(hWnd);
+			break;
+		case WM_CLIENT:
+			OnClient(hWnd);
+			break;
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+	}
+	return 0;
 }
 
 // Message handler for about box.
-INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM)
 {
-    UNREFERENCED_PARAMETER(lParam);
-    switch (message)
-    {
-    case WM_INITDIALOG:
-        return (INT_PTR)TRUE;
-
-    case WM_COMMAND:
-        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
-        {
-            EndDialog(hDlg, LOWORD(wParam));
-            return (INT_PTR)TRUE;
-        }
-        break;
-    }
-    return (INT_PTR)FALSE;
+	if(message == WM_INITDIALOG) return TRUE;
+	if(message == WM_COMMAND)
+	{
+		if(LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+		{
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+	}
+	return (INT_PTR)FALSE;
 }

@@ -27,9 +27,15 @@
     <ClInclude Include="GameCenter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Reversi.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GameCenter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Reversi.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
