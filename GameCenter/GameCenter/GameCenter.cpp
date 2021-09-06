@@ -25,7 +25,10 @@ HWND				InitInstance(HINSTANCE, int);
 LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow)
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
+                     _In_opt_ HINSTANCE hPrevInstance,
+                     _In_ LPWSTR    lpCmdLine,
+                     _In_ int       nCmdShow)
 {
 	//	WSA network initialize
 	WSADATA wsa;
@@ -167,7 +170,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_CREATE:
 		{
 			HDC hdc = GetDC(hWnd);
-			HBITMAP hBitmap = CreateCompatibleBitmap(hdc, 620, 440);
+			HBITMAP hBitmap = CreateCompatibleBitmap(hdc, Reversi::GetWidth(), Reversi::GetHeight());
 			memDC = CreateCompatibleDC(hdc);
 			SelectObject(memDC, hBitmap);
 			ReleaseDC(hWnd, hdc);
@@ -195,10 +198,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			hdc = BeginPaint(hWnd, &ps);
 			HGDIOBJ oldObj = SelectObject(memDC, GetStockObject(NULL_PEN));
-			Rectangle(memDC, 0, 0, WIDTH, HEIGHT);
+			Rectangle(memDC, 0, 0, Reversi::GetWidth(), Reversi::GetHeight());
 			SelectObject(memDC, oldObj);
 			game.Draw(memDC);
-			BitBlt(hdc, 0, 0, WIDTH, HEIGHT, memDC, 0, 0, SRCCOPY);
+			BitBlt(hdc, 0, 0, Reversi::GetWidth(), Reversi::GetHeight(), memDC, 0, 0, SRCCOPY);
 			EndPaint(hWnd, &ps);
 			break;
 		}
