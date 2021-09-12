@@ -17,6 +17,7 @@ SOCKET hListen = INVALID_SOCKET;
 SOCKET hClient[2] = { INVALID_SOCKET, INVALID_SOCKET };
 bool bListenWait = true;
 HDC memDC;
+HWND startGame;
 Reversi game;
 
 // Forward declarations of functions included in this code module:
@@ -159,11 +160,10 @@ void OnClient(HWND hWnd)
 #endif
 }
 
+#define	BUTTON_USER_GAME	(2001)
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	int wmId, wmEvent;
-	PAINTSTRUCT ps;
-	HDC hdc;
 
 	switch (message)
 	{
@@ -174,6 +174,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			memDC = CreateCompatibleDC(hdc);
 			SelectObject(memDC, hBitmap);
 			ReleaseDC(hWnd, hdc);
+			startGame = CreateWindow(L"BUTTON", L"User Game", 
+				WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+				Reversi::GetWidth() - 120,
+				Reversi::GetHeight() - 50,
+				110, 30, hWnd, (HMENU)BUTTON_USER_GAME, 
+				(HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), 
+				NULL);
+			EnableWindow(startGame, FALSE);
 			break;
 		}
 		case WM_COMMAND:
@@ -181,22 +189,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			wmId = LOWORD(wParam);
 			wmEvent = HIWORD(wParam);
 			// Parse the menu selections:
-			switch (wmId)
-			{
-			case IDM_ABOUT:
-				DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-				break;
-			case IDM_EXIT:
-				DestroyWindow(hWnd);
-				break;
-			default:
-				return DefWindowProc(hWnd, message, wParam, lParam);
-			}
+			if(wmId == IDM_ABOUT) DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+			else if(wmId == IDM_EXIT) DestroyWindow(hWnd);
+			else if(wmId == BUTTON_USER_GAME) DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+			else return DefWindowProc(hWnd, message, wParam, lParam);
 			break;
 		}
 		case WM_PAINT:
 		{
-			hdc = BeginPaint(hWnd, &ps);
+			PAINTSTRUCT ps;
+			HDC hdc = BeginPaint(hWnd, &ps);
 			HGDIOBJ oldObj = SelectObject(memDC, GetStockObject(NULL_PEN));
 			Rectangle(memDC, 0, 0, Reversi::GetWidth(), Reversi::GetHeight());
 			SelectObject(memDC, oldObj);

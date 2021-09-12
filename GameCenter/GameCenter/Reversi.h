@@ -8,6 +8,7 @@ public:
 	enum Status { READY, READY1, TURN_BLACK, TURN_WHITE, END };
 
 public:
+	Reversi() { status = READY; scores[0] = scores[1] = 0; ZeroMemory(board, sizeof(board)); }
 	/// <summary>
 	///	Initialize reversi board
 	/// </summary>

@@ -1,7 +1,9 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "FrameWork.h"
 #include "Reversi.h"
 #include <windows.h>
 #include <stdio.h>
+#include <string>
 
 #define	CSIZE	64
 #define	XOFFSET	10
@@ -14,13 +16,13 @@ void Reversi::Init()
 	board[3 * RSIZE + 4] = 2;
 	board[4 * RSIZE + 3] = 2;
 	board[4 * RSIZE + 4] = 1;
-	scores[0] = scores[1] = 0;
+	scores[0] = scores[1] = 2;
 	status = READY;
 }
 
 int Reversi::GetWidth()
 {
-	return RSIZE * CSIZE + XOFFSET * 2 + 100;
+	return RSIZE * CSIZE + XOFFSET * 2 + 130;
 }
 
 int Reversi::GetHeight()
@@ -30,6 +32,11 @@ int Reversi::GetHeight()
 
 void Reversi::Draw(HDC hdc)
 {
+	HGDIOBJ oldObj = SelectObject(hdc, GetStockObject(DC_BRUSH));
+	SelectObject(hdc, GetStockObject(DC_PEN));
+	SetDCPenColor(hdc, RGB(0, 0, 0));
+	SetDCBrushColor(hdc, RGB(240, 240, 150));
+	Rectangle(hdc, XOFFSET, YOFFSET, XOFFSET+RSIZE*CSIZE+2, YOFFSET+RSIZE*CSIZE+2);
 	for(int i = 0; i <= RSIZE; i++)
 	{
 		MoveToEx(hdc, XOFFSET + i*CSIZE, YOFFSET, 0);
@@ -37,45 +44,26 @@ void Reversi::Draw(HDC hdc)
 		MoveToEx(hdc, XOFFSET, YOFFSET + i*CSIZE, 0);
 		LineTo(hdc, XOFFSET + RSIZE*CSIZE, YOFFSET + i*CSIZE);
 	}
-#if 0
-	int xdiff[4][2] = { { 0, CSIZE }, { CSIZE, CSIZE }, { 0, CSIZE }, { 0, 0 } };
-	int ydiff[4][2] = { { 0, 0 }, { 0, CSIZE }, { CSIZE, CSIZE }, { 0, CSIZE } };
-
-	for (int i = 0; i < 256; i++)
+	for(int r = 0; r < RSIZE; r++)
 	{
-		for (int j = 0; j < 4; j++)
+		for(int c = 0; c < RSIZE; c++)
 		{
-			if (m_ucMaze[i] & (1 << j))
-			{
-				MoveToEx(hdc, XOFFSET + (i % MSIZE) * CSIZE + xdiff[j][0], YOFFSET + (i / MSIZE) * CSIZE + ydiff[j][0], 0);
-				LineTo(hdc, XOFFSET + (i % MSIZE) * CSIZE + xdiff[j][1], YOFFSET + (i / MSIZE) * CSIZE + ydiff[j][1]);
-			}
-		}
-		COLORREF c = 0;
-		if (i == 240) c = RGB(255, 0, 0);
-		else if (i == 135) c = RGB(0, 0, 255);
-		else if (m_nStatus == SECOND_TARGET || m_bEditMode) c = (m_ucVisit[i] == SECOND_TARGET) ? RGB(255, 200, 200) : 0xffffff;
-		else if (m_ucVisit[i] == FIRST_TARGET) c = RGB(255, 255, 200);
-		else if (m_ucVisit[i] == RETURN_HOME) c = RGB(200, 200, 255);
-		else if (m_ucVisit[i] == SECOND_TARGET) c = RGB(255, 200, 200);
-		if (c)
-		{
-			HGDIOBJ oldPen = SelectObject(hdc, GetStockObject(NULL_PEN));
-			HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(DC_BRUSH));
-			SetDCBrushColor(hdc, c);
-			SetBkColor(hdc, c);
-			Rectangle(hdc, XOFFSET + (i % MSIZE) * CSIZE + 2, YOFFSET + (i / MSIZE) * CSIZE + 2,
-				XOFFSET + (i % MSIZE) * CSIZE + CSIZE - 2, YOFFSET + (i / MSIZE) * CSIZE + CSIZE - 2);
-			SelectObject(hdc, oldBrush);
-			SelectObject(hdc, oldPen);
-			if (m_nStatus == SECOND_TARGET || m_bEditMode)
-			{
-				char s = '0' + (m_ucMaze[i] >> 4);
-				TextOutA(hdc, XOFFSET + (i % MSIZE) * CSIZE + 8, YOFFSET + (i / MSIZE) * CSIZE + 3, &s, 1);
-			}
+			int idx = r*RSIZE+c;
+			if(board[idx] == 0) continue;
+			SetDCBrushColor(hdc, (board[idx]==1)?RGB(255, 255, 255):RGB(100, 100, 120));
+			Ellipse(hdc, XOFFSET+CSIZE*c+5, YOFFSET+CSIZE*r+5, XOFFSET+CSIZE*c+CSIZE-3, YOFFSET+CSIZE*r+CSIZE-3);
+			Ellipse(hdc, XOFFSET+CSIZE*c+4, YOFFSET+CSIZE*r+4, XOFFSET+CSIZE*c+CSIZE-4, YOFFSET+CSIZE*r+CSIZE-4);
+			Ellipse(hdc, XOFFSET+CSIZE*c+3, YOFFSET+CSIZE*r+3, XOFFSET+CSIZE*c+CSIZE-5, YOFFSET+CSIZE*r+CSIZE-5);
 		}
 	}
-
+	char str[128];
+	int len;
+	len = sprintf(str, "Score(White) : %3d", scores[0]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET, str, len); 
+	len = sprintf(str, "Score(White) : %3d", scores[1]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+20, str, len); 
+	SelectObject(hdc, oldObj);
+#if 0
 	HGDIOBJ oldObj = SelectObject(hdc, GetStockObject(NULL_BRUSH));
 	Rectangle(hdc, XOFFSET + (m_nCur % MSIZE) * CSIZE + 2, YOFFSET + (m_nCur / MSIZE) * CSIZE + 2,
 		XOFFSET + (m_nCur % MSIZE) * CSIZE + CSIZE - 2, YOFFSET + (m_nCur / MSIZE) * CSIZE + CSIZE - 2);
