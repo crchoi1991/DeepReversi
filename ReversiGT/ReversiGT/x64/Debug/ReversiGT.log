@@ -1,4 +1,0 @@
-﻿  main.cpp
-C:\projects\DeepReversi\ReversiGT\ReversiGT\main.cpp(363,19): warning C4018: '<': signed/unsigned mismatch
-C:\projects\DeepReversi\ReversiGT\ReversiGT\main.cpp(396,19): warning C4018: '<': signed/unsigned mismatch
-  ReversiGT.vcxproj -> C:\projects\DeepReversi\ReversiGT\x64\Debug\ReversiGT.exe

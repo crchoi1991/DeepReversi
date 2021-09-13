@@ -2,41 +2,20 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <conio.h>
 #include <winsock2.h>
 
 #include "limittbl.h"
 
 #if defined(_WIN32)
 #define	getch	_getch
+#define kbhit	_kbhit
 #endif
 
-#define	LEVEL_EASY		(1)
 #define	LEVEL_HARD		(5)
 
 #define	USE_SCOREBOARD	(1)
 #define	USE_PURE		(2)
-
-struct Gameboard
-{
-	unsigned char board[64];
-	unsigned score[3];		//	0 : empty 1 : white 2 : black
-	unsigned hint;
-};
-
-static Gameboard Initboard =
-{
-	{
-		3, 3, 3, 3, 3, 3, 3, 3,
-		3, 3, 3, 3, 3, 3, 3, 3,
-		3, 3, 3, 3, 0, 3, 3, 3,
-		3, 3, 3, 1, 2, 0, 3, 3,
-		3, 3, 0, 2, 1, 3, 3, 3,
-		3, 3, 3, 0, 3, 3, 3, 3,
-		3, 3, 3, 3, 3, 3, 3, 3,
-		3, 3, 3, 3, 3, 3, 3, 3
-	},
-	60, 2, 2, 4
-};
 
 static int ScoreBoard[64] =
 {
@@ -50,148 +29,106 @@ static int ScoreBoard[64] =
 	10,  1,  3,  2,  2,  3,  1, 10
 };
 
-void DisplayBoard(Gameboard &board);
-void PutBoard(Gameboard &board, unsigned int index, unsigned int turn);
-unsigned GetOptimal(Gameboard &board, unsigned turn, unsigned depth = 3, unsigned method = USE_SCOREBOARD);
+class Game
+{
+public:
+	Game() : sock(INVALID_SOCKET) { }
+	~Game() { if(sock != INVALID_SOCKET) closesocket(sock); }
+	int GetHint() const { return hint; }
+	bool IsGameOver() const { return !score[0] || !score[1] || !score[2]; }
+	bool Ready()
+	{
+		sock = socket(AF_INET, SOCK_STREAM, 0);
 
-unsigned GetLevel();
-unsigned GetPlayerTurn();
-unsigned GetPlayerChoice(Gameboard &board);
+		SOCKADDR_IN addr;
+		addr.sin_family = AF_INET;
+		addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+		addr.sin_port = htons(8888);
+		if( connect(sock, (SOCKADDR *)&addr, sizeof(addr)) != 0 ) return false;
+
+		char buf[512];
+		int len = recv(sock, buf, 512, 0);
+		if(len <= 0) return false;
+		buf[len] = 0;
+
+		turnColor = atoi(buf);
+		printf("turn : %s\n", turn?"White":"Black");
+
+		return true;
+	}
+	bool RunTurn()
+	{
+		char buf[512];
+		for(int len = 0; len < 64; )
+		{
+			int slen = recv(sock, buf+len, 512-len, 0);
+			if(slen <= 0) return false;
+			len += slen;
+		}
+		memset(scores, 0, sizeof(scores));
+		hint = 0;
+		for(int i = 0; i < 64; i++)
+		{
+			board[i] = buf[i]-'0';
+			if(buf[i] == '0') { scores[0]++; hints[hint++] = i; }
+			else if(buf[i] == '3') scores[0]++;
+			else scores[buf[i]-'0']++;
+		}
+		int depth, method;
+		if(scores[0] > 50) depth = depth0, method = USE_SCOREBOARD;
+		else if(scores[0] > LEVEL_HARD+4) depth = depth1, method = USE_SCOREBOARD;
+		else depth = scores[0], method = USE_PURE;
+		int choice = GetOptimal(depth, method);
+	}
+	void PutBoard(unsigned int index, unsigned int turn);
+	int GetOptimal(int depth, int method);
+private:
+	char board[64], hints[64];
+	int scores[3];		//	0 : empty 1 : white 2 : black
+	int hint, turn;
+	int turnColor;
+	SOCKET sock;
+};
 
 int main(int argc, char *argv[])
 {
-	Gameboard board = Initboard;
-	unsigned depth0, depth1, depth2;
+	bool PlayGame();
+	WSADATA wsa;
+	WSAStartup(MAKEWORD(2,2), &wsa);
 
-	unsigned level = GetLevel();
+	while(PlayGame());
 
-	if(level == 1)
-	{
-		depth0 = LEVEL_EASY;
-		depth1 = LEVEL_EASY+2;
-		depth2 = LEVEL_EASY+4;
-	}
-	else
-	{
-		depth0 = LEVEL_HARD;
-		depth1 = LEVEL_HARD+2;
-		depth2 = LEVEL_HARD+4;
-	}
+	WSACleanup();
+}
 
+bool PlayGame()
+{
+	Game game;
+	if(!game.Ready()) return false;
+
+	unsigned depth0 = LEVEL_HARD, depth1 = LEVEL_HARD+2, depth2 = LEVEL_HARD+4;
 	unsigned playerturn = GetPlayerTurn();
 
-	DisplayBoard(board);
-
-	for( unsigned turn = 1 ; ; turn ^= 3)
+	bool continueFlag = true;
+	while(game.IsGameOver())
 	{
-		unsigned place;
-
-		if(board.hint == 0)
-		{
-			place = 64;
-		}
-		else if(turn == playerturn)
-		{
-			place = GetPlayerChoice(board);
-		}
-		else
-		{
-			unsigned depth;
-			unsigned scoremethod;
-			if(board.score[0] > 50)
-			{
-				depth = depth0;
-				scoremethod = USE_SCOREBOARD;
-			}
-			else if(board.score[0] > depth2)
-			{
-				depth = depth1;
-				scoremethod = USE_SCOREBOARD;
-			}
-			else
-			{
-				depth = board.score[0];
-				scoremethod = USE_PURE;
-			}
-			place = GetOptimal(board, turn, depth, scoremethod);
-		}
-
-		PutBoard(board, place, turn);
-
-		DisplayBoard(board);
-
-		if(!board.score[0] || !board.score[1] || !board.score[2])
-			break;
+		if(kbhit() && getch() == 'q') continueFlag = false;
+		game.RunTurn();
 	}
 	
-	printf("¡Ü : ¡Û = %d : %d\n", board.score[1], board.score[2]);
-
-	while(getchar() != '\n') ;
-
-	return 0;
+	return continueFlag;
 }
 
-unsigned GetLevel()
-{
-	unsigned ch;
-	printf("Select game level : 1. Easy, 2. Hard: ");
-	for( ; ; )
-	{
-		ch = getch();
-		if(ch == '1' || ch == '2')
-			break;
-	}
-	putchar('\n');
-	return ch - '0';
-}
-
-unsigned GetPlayerTurn()
-{
-	unsigned ch;
-	printf("Select your turn : 1. ¡Ü(first), 2. ¡Û(Second) 3. None: ");
-	for( ; ; )
-	{
-		ch = getch();
-		if(ch == '1' || ch == '2' || ch == '3')
-			break;
-	}
-	putchar('\n');
-	return ch - '0';
-}
-
-unsigned GetPlayerChoice(Gameboard &board)
-{
-	unsigned place;
-
-	for( ; ; )
-	{
-		char str[512];
-
-		fgets(str, 512, stdin);
-
-		if(str[0] >= 'a' && str[0] <= 'h' && str[1] >= '1' && str[1] <= '8')
-		{
-			place = (str[0] - 'a')*8 + (str[1]-'1');
-			if(board.board[place] == 0)
-				break;
-		}
-		printf("Incorrect input\n");
-	}
-	return place;
-}
-
-#define	MINVAL (-1000)
-#define	MAXVAL (1000)
+#define	MINVAL		(-1000)
+#define	MAXVAL		(1000)
 #define	MAXDEPTH	(20)
 
-unsigned GetOptimal(Gameboard &board, unsigned turn, unsigned maxdepth, unsigned method)
+unsigned Game::GetOptimal(unsigned maxdepth, unsigned method)
 {
 	unsigned nodenum = 0;
 
-	if(!board.hint)
-		return 64;
-	
-	if(board.hint == 1)
+	if(!hint) return 64;
+	if(hint == 1)
 	{
 		for( unsigned ui = 0 ; ui < 64 ; ++ui)
 			if(board.board[ui] == 0)
@@ -305,41 +242,10 @@ unsigned GetOptimal(Gameboard &board, unsigned turn, unsigned maxdepth, unsigned
 			}
 		}
 		
-//		for(unsigned r = 0 ; r < maxdepth ; ++r)
-//			printf("[%c%c(%d)]", slot[r]/8 + 'a', slot[r]%8 + '1', score[r]);
-//		printf("%d\n", nodescore);
-
 		slot[depth]++;
 	}
 
 	return optindex[0];
-}
-
-void DisplayBoard(Gameboard &board)
-{
-	unsigned int ui, uj;
-
-	system("cls");
-	printf("     1    2    3    4    5    6    7    8     ¡Ü : ¡Û = %d : %d\n", board.score[1], board.score[2]);
-	for(ui = 0 ; ui < 8 ; ui++)
-	{
-		printf("   +----+----+----+----+----+----+----+----+\n");
-		printf(" %c |", ui+'a');
-		for(uj = 0 ; uj < 8 ; uj++)
-		{
-			unsigned char v = board.board[ui*8+uj];
-			if(v == 1)
-				printf(" ¡Ü |");
-			else if(v == 2)
-				printf(" ¡Û |");
-			else if(v == 0)
-				printf(" ¡Ø |");
-			else
-				printf("    |");
-		}
-		putchar('\n');
-	}
-	printf("   +----+----+----+----+----+----+----+----+\n");
 }
 
 void PutBoard(Gameboard &board, unsigned int index, unsigned int turn)

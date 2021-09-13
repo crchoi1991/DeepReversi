@@ -1,7 +1,10 @@
-GameCenter/Debug
-GameCenter/x64
+Debug
+x64
+
 # Prerequisites
 *.d
+*.idb
+*.pdb
 
 # Compiled Object files
 *.slo
