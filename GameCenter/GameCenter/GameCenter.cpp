@@ -1,8 +1,10 @@
 #include "framework.h"
 #include "GameCenter.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <commdlg.h>
 #include <winsock2.h>
+#include <time.h>
 #include "Reversi.h"
 
 #define	WM_ACCEPT			(WM_USER+1)
@@ -11,11 +13,17 @@
 #define	WIDTH		640
 #define	HEIGHT		440
 
+#define	BUTTON_USER_GAME	(2001)
+
+#define PLAYER_NOTASSIGN	0
+#define PLAYER_NETWORK		1
+#define PLAYER_USER			2
+
 // Global Variables:
 HINSTANCE hInst;								// current instance
 SOCKET hListen = INVALID_SOCKET;
 SOCKET hClient[2] = { INVALID_SOCKET, INVALID_SOCKET };
-bool bListenWait = true;
+int players[2];
 HDC memDC;
 HWND startGame;
 Reversi game;
@@ -26,14 +34,13 @@ HWND				InitInstance(HINSTANCE, int);
 LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPWSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
+	srand(time(0));
+
 	//	WSA network initialize
 	WSADATA wsa;
-	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return FALSE;
+	if(WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return FALSE;
 
 	// Initialize global strings
 	MyRegisterClass(hInstance);
@@ -110,23 +117,29 @@ HWND InitInstance(HINSTANCE hInstance, int nCmdShow)
 	return hWnd;
 }
 
+int GetPlayer(int player)
+{
+	int cand = (!players[0] && !players[1])? rand()&1:!players[1];
+	players[cand] = player;
+	return cand;
+}
+
 void OnAccept(HWND hWnd)
 {
+	if(players[0] && players[1]) return;
+	int cand = GetPlayer(PLAYER_NETWORK);
+	game.SetPlayer(cand, PLAYER_NETWORK);
+	
 	SOCKADDR_IN addr;
 	int len = sizeof(addr);
-	if(game.GetStatus() > Reversi::READY1) return;
-	if(game.GetStatus() == Reversi::READY)
-	{
-		hClient[0] = accept(hListen, (SOCKADDR*)&addr, &len);
-		game.SetStatus(Reversi::READY1);
-	}
-	else
-	{
-		hClient[1] = accept(hListen, (SOCKADDR*)&addr, &len);
-		WSAEventSelect(hClient[0], hWnd, FD_READ | FD_CLOSE);
-		WSAEventSelect(hClient[1], hWnd, FD_READ | FD_CLOSE);
-	}
+	hClient[cand] = accept(hListen, (SOCKADDR*)&addr, &len);
+	WSAEventSelect(hClient[cand], hWnd, FD_READ | FD_CLOSE);
 
+	if(players[0] && players[1])
+	{
+		EnableWindow(startGame, FALSE);
+		game.Start();
+	}
 	InvalidateRect(hWnd, 0, FALSE);
 }
 
@@ -160,48 +173,61 @@ void OnClient(HWND hWnd)
 #endif
 }
 
-#define	BUTTON_USER_GAME	(2001)
+void OnCreate(HWND hWnd)
+{
+	HDC hdc = GetDC(hWnd);
+	HBITMAP hBitmap = CreateCompatibleBitmap(hdc, Reversi::GetWidth(), Reversi::GetHeight());
+	memDC = CreateCompatibleDC(hdc);
+	SelectObject(memDC, hBitmap);
+	ReleaseDC(hWnd, hdc);
+	startGame = CreateWindow(L"BUTTON", L"User Game", 
+		WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+		Reversi::GetWidth() - 120,
+		Reversi::GetHeight() - 50,
+		110, 30, hWnd, (HMENU)BUTTON_USER_GAME, 
+		(HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), 
+		NULL);
+	EnableWindow(startGame, TRUE);
+}
+
+int OnCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
+{
+	int wmId = LOWORD(wParam);
+	int wmEvent = HIWORD(wParam);
+	// Parse the menu selections:
+	if(wmId == IDM_ABOUT) DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+	else if(wmId == IDM_EXIT) DestroyWindow(hWnd);
+	else if(wmId == BUTTON_USER_GAME)
+	{
+		if(wmEvent == BN_CLICKED && players[0] != PLAYER_USER && players[1] != PLAYER_USER)
+		{
+			int cand = GetPlayer(PLAYER_USER);
+			game.SetPlayer(cand, PLAYER_USER);
+			EnableWindow(startGame, FALSE);
+			InvalidateRect(hWnd, 0, TRUE);
+		}
+	}
+	else return DefWindowProc(hWnd, WM_COMMAND, wParam, lParam);
+	return 0;
+}
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	int wmId, wmEvent;
-
 	switch (message)
 	{
 		case WM_CREATE:
 		{
-			HDC hdc = GetDC(hWnd);
-			HBITMAP hBitmap = CreateCompatibleBitmap(hdc, Reversi::GetWidth(), Reversi::GetHeight());
-			memDC = CreateCompatibleDC(hdc);
-			SelectObject(memDC, hBitmap);
-			ReleaseDC(hWnd, hdc);
-			startGame = CreateWindow(L"BUTTON", L"User Game", 
-				WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-				Reversi::GetWidth() - 120,
-				Reversi::GetHeight() - 50,
-				110, 30, hWnd, (HMENU)BUTTON_USER_GAME, 
-				(HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), 
-				NULL);
-			EnableWindow(startGame, FALSE);
+			OnCreate(hWnd);
 			break;
 		}
 		case WM_COMMAND:
 		{
-			wmId = LOWORD(wParam);
-			wmEvent = HIWORD(wParam);
-			// Parse the menu selections:
-			if(wmId == IDM_ABOUT) DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-			else if(wmId == IDM_EXIT) DestroyWindow(hWnd);
-			else if(wmId == BUTTON_USER_GAME) DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-			else return DefWindowProc(hWnd, message, wParam, lParam);
+			return OnCommand(hWnd, wParam, lParam);
 			break;
 		}
 		case WM_PAINT:
 		{
 			PAINTSTRUCT ps;
 			HDC hdc = BeginPaint(hWnd, &ps);
-			HGDIOBJ oldObj = SelectObject(memDC, GetStockObject(NULL_PEN));
-			Rectangle(memDC, 0, 0, Reversi::GetWidth(), Reversi::GetHeight());
-			SelectObject(memDC, oldObj);
 			game.Draw(memDC);
 			BitBlt(hdc, 0, 0, Reversi::GetWidth(), Reversi::GetHeight(), memDC, 0, 0, SRCCOPY);
 			EndPaint(hWnd, &ps);

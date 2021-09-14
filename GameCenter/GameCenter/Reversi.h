@@ -5,26 +5,24 @@
 class Reversi
 {
 public:
-	enum Status { READY, READY1, TURN_BLACK, TURN_WHITE, END };
-
-public:
-	Reversi() { status = READY; scores[0] = scores[1] = 0; ZeroMemory(board, sizeof(board)); }
+	Reversi();
 	/// <summary>
-	///	Initialize reversi board
+	///	Start game
 	/// </summary>
-	void Init();
+	void Start();
 	/// <summary>
 	///	Draw reversi board
 	/// </summary>
 	/// <param name="hdc">[IN] device context handle</param>
 	void Draw(HDC hdc);
-	Status GetStatus() const { return status; }
-	void SetStatus(Status newStatus) { status = newStatus; }
+	int GetTurn() const { return turn; }
+	void SetPlayer(int idx, int p) { players[idx] = p; }
 	static int GetWidth();
 	static int GetHeight();
 
 private:
-	unsigned char board[RSIZE * RSIZE];
-	int scores[2];
-	Status status;
+	char board[RSIZE * RSIZE];
+	int scores[3], hint;
+	int turn;
+	int players[2];
 };

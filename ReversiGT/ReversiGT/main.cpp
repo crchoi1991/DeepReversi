@@ -1,5 +1,6 @@
-#include <assert.h>
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <conio.h>
@@ -35,7 +36,7 @@ public:
 	Game() : sock(INVALID_SOCKET) { }
 	~Game() { if(sock != INVALID_SOCKET) closesocket(sock); }
 	int GetHint() const { return hint; }
-	bool IsGameOver() const { return !score[0] || !score[1] || !score[2]; }
+	bool IsGameOver() const { return !scores[0] || !scores[1] || !scores[2]; }
 	bool Ready()
 	{
 		sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -75,12 +76,11 @@ public:
 			else scores[buf[i]-'0']++;
 		}
 		int depth, method;
-		if(scores[0] > 50) depth = depth0, method = USE_SCOREBOARD;
-		else if(scores[0] > LEVEL_HARD+4) depth = depth1, method = USE_SCOREBOARD;
+		if(scores[0] > 50) depth = LEVEL_HARD, method = USE_SCOREBOARD;
+		else if(scores[0] > LEVEL_HARD+4) depth = LEVEL_HARD+2, method = USE_SCOREBOARD;
 		else depth = scores[0], method = USE_PURE;
 		int choice = GetOptimal(depth, method);
 	}
-	void PutBoard(unsigned int index, unsigned int turn);
 	int GetOptimal(int depth, int method);
 private:
 	char board[64], hints[64];
@@ -106,14 +106,11 @@ bool PlayGame()
 	Game game;
 	if(!game.Ready()) return false;
 
-	unsigned depth0 = LEVEL_HARD, depth1 = LEVEL_HARD+2, depth2 = LEVEL_HARD+4;
-	unsigned playerturn = GetPlayerTurn();
-
 	bool continueFlag = true;
 	while(game.IsGameOver())
 	{
 		if(kbhit() && getch() == 'q') continueFlag = false;
-		game.RunTurn();
+		if(!game.RunTurn()) return false;
 	}
 	
 	return continueFlag;
@@ -123,26 +120,28 @@ bool PlayGame()
 #define	MAXVAL		(1000)
 #define	MAXDEPTH	(20)
 
-unsigned Game::GetOptimal(unsigned maxdepth, unsigned method)
+struct Gameboard { char board[64]; int score[3], hint; };
+void PutBoard(Gameboard &board, int index, int turn);
+
+int Game::GetOptimal(int maxdepth, int method)
 {
-	unsigned nodenum = 0;
+	int nodenum = 0;
 
 	if(!hint) return 64;
-	if(hint == 1)
-	{
-		for( unsigned ui = 0 ; ui < 64 ; ++ui)
-			if(board.board[ui] == 0)
-				return ui;
-	}
+	if(hint == 1) return hints[0];
 
 	Gameboard boards[MAXDEPTH];
-	unsigned slot[MAXDEPTH];
-	unsigned optindex[MAXDEPTH];
+	int slot[MAXDEPTH];
+	int optindex[MAXDEPTH];
 	int score[MAXDEPTH];
-	unsigned depth = 0;
+	int depth = 0;
 	int nodescore;
 
-	boards[0] = board;
+	memcpy(boards[0].board, board, sizeof(board));
+	boards[0].score[0] = scores[0];
+	boards[0].score[1] = scores[1];
+	boards[0].score[2] = scores[2];
+	boards[0].hint = hint;
 	slot[0] = 0;
 
 	score[0] = (turn == 1)? MINVAL : MAXVAL;	
@@ -174,7 +173,7 @@ unsigned Game::GetOptimal(unsigned maxdepth, unsigned method)
 			if(method == USE_SCOREBOARD)
 			{
 				nodescore = 0;
-				for(unsigned r = 0 ; r < 64 ; r++)
+				for(int r = 0 ; r < 64 ; r++)
 				{
 					if(boards[depth].board[r] == 1)
 						nodescore += ScoreBoard[r];
@@ -248,11 +247,9 @@ unsigned Game::GetOptimal(unsigned maxdepth, unsigned method)
 	return optindex[0];
 }
 
-void PutBoard(Gameboard &board, unsigned int index, unsigned int turn)
+void PutBoard(Gameboard &board, int index, int turn)
 {
-	unsigned int ui;
-	unsigned int r;
-	unsigned int anti = (turn ^ 0x3);
+	int ui, r, anti = (turn ^ 0x3);
 	static int dxy[8] = { -8, -7, 1, 9, 8, 7, -1, -9 };
 
 	if(index != 64)
@@ -314,33 +311,3 @@ void PutBoard(Gameboard &board, unsigned int index, unsigned int turn)
 		}
 	}
 }
-#if 0
-void MakeLimits()
-{
-	FILE *fp = fopen("limittbl.h", "w");
-	unsigned limit[8];
-	unsigned index, x, y;
-
-	fprintf(fp, "unsigned limit[64][8] = \n{\n");
-	for(index = 0 ; index < 64 ; index++ )
-	{
-		//	Get limit values of 8 axis
-		x = index%8;
-		y = index/8;
-		limit[0] = y;
-		limit[1] = (y > 7-x)?7-x:y;
-		limit[2] = 7-x;
-		limit[3] = (7-y > 7-x)?7-x:7-y;
-		limit[4] = 7-y;
-		limit[5] = (7-y > x)?x:7-y;
-		limit[6] = x;
-		limit[7] = (y > x)?x:y;
-		fprintf(fp, "\t{ %d, %d, %d, %d, %d, %d, %d, %d }", limit[0], limit[1], limit[2], limit[3], limit[4], limit[5], limit[6], limit[7]);
-		if(index != 63)
-			fprintf(fp, ",\n");
-	}
-	fprintf(fp, "};");
-
-	fclose(fp);
-}
-#endif

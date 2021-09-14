@@ -9,15 +9,27 @@
 #define	XOFFSET	10
 #define	YOFFSET	10
 
-void Reversi::Init()
+Reversi::Reversi() : hint(0), turn(0)
+{ 
+	memset(board, 3, sizeof(board));
+	scores[0] = scores[1] = scores[2] = 0;
+	players[0] = players[1] = 0;
+}
+
+void Reversi::Start()
 {
-	ZeroMemory(board, sizeof(board));
+	memset(board, 3, sizeof(board));
 	board[3 * RSIZE + 3] = 1;
 	board[3 * RSIZE + 4] = 2;
 	board[4 * RSIZE + 3] = 2;
 	board[4 * RSIZE + 4] = 1;
-	scores[0] = scores[1] = 2;
-	status = READY;
+	board[2 * RSIZE + 4] = 0;
+	board[3 * RSIZE + 5] = 0;
+	board[4 * RSIZE + 2] = 0;
+	board[5 * RSIZE + 3] = 0;
+	scores[0] = 60;
+	scores[1] = scores[2] = 2;
+	hint = 4;
 }
 
 int Reversi::GetWidth()
@@ -34,6 +46,9 @@ void Reversi::Draw(HDC hdc)
 {
 	HGDIOBJ oldObj = SelectObject(hdc, GetStockObject(DC_BRUSH));
 	SelectObject(hdc, GetStockObject(DC_PEN));
+	SetDCBrushColor(hdc, RGB(255, 255, 255));
+	SetDCPenColor(hdc, RGB(255, 0, 0));
+	Rectangle(hdc, 0, 0, GetWidth(), GetHeight());
 	SetDCPenColor(hdc, RGB(0, 0, 0));
 	SetDCBrushColor(hdc, RGB(240, 240, 150));
 	Rectangle(hdc, XOFFSET, YOFFSET, XOFFSET+RSIZE*CSIZE+2, YOFFSET+RSIZE*CSIZE+2);
@@ -49,39 +64,29 @@ void Reversi::Draw(HDC hdc)
 		for(int c = 0; c < RSIZE; c++)
 		{
 			int idx = r*RSIZE+c;
-			if(board[idx] == 0) continue;
+			if(board[idx] == 3) continue;
 			SetDCBrushColor(hdc, (board[idx]==1)?RGB(255, 255, 255):RGB(100, 100, 120));
-			Ellipse(hdc, XOFFSET+CSIZE*c+5, YOFFSET+CSIZE*r+5, XOFFSET+CSIZE*c+CSIZE-3, YOFFSET+CSIZE*r+CSIZE-3);
-			Ellipse(hdc, XOFFSET+CSIZE*c+4, YOFFSET+CSIZE*r+4, XOFFSET+CSIZE*c+CSIZE-4, YOFFSET+CSIZE*r+CSIZE-4);
-			Ellipse(hdc, XOFFSET+CSIZE*c+3, YOFFSET+CSIZE*r+3, XOFFSET+CSIZE*c+CSIZE-5, YOFFSET+CSIZE*r+CSIZE-5);
+			if(board[idx] == 0) Rectangle(hdc, XOFFSET+CSIZE*c+5, YOFFSET+CSIZE*r+5, XOFFSET+CSIZE*c+CSIZE-5, YOFFSET+CSIZE*r+CSIZE-5);
+			else
+			{
+				Ellipse(hdc, XOFFSET+CSIZE*c+5, YOFFSET+CSIZE*r+5, XOFFSET+CSIZE*c+CSIZE-3, YOFFSET+CSIZE*r+CSIZE-3);
+				Ellipse(hdc, XOFFSET+CSIZE*c+4, YOFFSET+CSIZE*r+4, XOFFSET+CSIZE*c+CSIZE-4, YOFFSET+CSIZE*r+CSIZE-4);
+				Ellipse(hdc, XOFFSET+CSIZE*c+3, YOFFSET+CSIZE*r+3, XOFFSET+CSIZE*c+CSIZE-5, YOFFSET+CSIZE*r+CSIZE-5);
+			}
 		}
 	}
 	char str[128];
 	int len;
-	len = sprintf(str, "Score(White) : %3d", scores[0]);
-	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET, str, len); 
-	len = sprintf(str, "Score(White) : %3d", scores[1]);
+	const char *playerstr[3] = { "Wait", "Network", "User" };
+	len = sprintf(str, "Player ¡Ü : %s", playerstr[players[0]]);
 	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+20, str, len); 
+	len = sprintf(str, "Player ¡Û : %s", playerstr[players[1]]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+40, str, len); 
+	len = sprintf(str, "Score  ¡Ü : %3d", scores[1]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+80, str, len); 
+	len = sprintf(str, "Score  ¡Û : %3d", scores[2]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+100, str, len); 
 	SelectObject(hdc, oldObj);
-#if 0
-	HGDIOBJ oldObj = SelectObject(hdc, GetStockObject(NULL_BRUSH));
-	Rectangle(hdc, XOFFSET + (m_nCur % MSIZE) * CSIZE + 2, YOFFSET + (m_nCur / MSIZE) * CSIZE + 2,
-		XOFFSET + (m_nCur % MSIZE) * CSIZE + CSIZE - 2, YOFFSET + (m_nCur / MSIZE) * CSIZE + CSIZE - 2);
-	SelectObject(hdc, oldObj);
-
-	Rectangle(hdc, CSIZE * MSIZE + XOFFSET + 10, YOFFSET, CSIZE * MSIZE + XOFFSET + 200, YOFFSET + 80);
-	char str[128];
-	int len;
-	SetBkColor(hdc, 0xffffff);
-	len = sprintf(str, "X : %d, Y : %d", m_nCur % MSIZE, MSIZE - m_nCur / MSIZE - 1);
-	TextOutA(hdc, CSIZE * MSIZE + XOFFSET + 20, YOFFSET + 10, str, len);
-	len = sprintf(str, "1st %d, Ret %d, 2nd %d", m_nScore[0], m_nScore[1], m_nScore[2]);
-	TextOutA(hdc, CSIZE * MSIZE + XOFFSET + 20, YOFFSET + 30, str, len);
-	len = sprintf(str, "Total %d", m_nScore[0] * 5 + m_nScore[1] + m_nScore[2]);
-	TextOutA(hdc, CSIZE * MSIZE + XOFFSET + 20, YOFFSET + 50, str, len);
-
-	TextOutA(hdc, CSIZE * MSIZE + XOFFSET + 40, YOFFSET + 360, "Algorithm of KPU 2015", 21);
-#endif
 }
 
 #if 0
