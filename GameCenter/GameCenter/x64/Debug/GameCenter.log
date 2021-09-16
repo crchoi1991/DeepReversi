@@ -1,2 +1,4 @@
-﻿  Reversi.cpp
+﻿  GameCenter.cpp
+C:\projects\DeepReversi\GameCenter\GameCenter\GameCenter.cpp(40,12): warning C4244: 'argument': conversion from 'time_t' to 'unsigned int', possible loss of data
+C:\projects\DeepReversi\GameCenter\GameCenter\GameCenter.cpp(197,27): warning C4244: 'return': conversion from 'LRESULT' to 'int', possible loss of data
   GameCenter.vcxproj -> C:\projects\DeepReversi\GameCenter\x64\Debug\GameCenter.exe

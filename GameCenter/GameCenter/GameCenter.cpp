@@ -1,3 +1,4 @@
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include "framework.h"
 #include "GameCenter.h"
 #include <stdio.h>
@@ -59,8 +60,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	addr.sin_port = htons(8888);
 	bind(hListen, (SOCKADDR*)&addr, sizeof(addr));
 
-	listen(hListen, 1);
-	WSAEventSelect(hListen, hWnd, FD_ACCEPT);
+	listen(hListen, 2);
+	WSAAsyncSelect(hListen, hWnd, WM_ACCEPT, FD_ACCEPT);
 
 	// Main message loop:
 	MSG msg;
@@ -133,7 +134,9 @@ void OnAccept(HWND hWnd)
 	SOCKADDR_IN addr;
 	int len = sizeof(addr);
 	hClient[cand] = accept(hListen, (SOCKADDR*)&addr, &len);
-	WSAEventSelect(hClient[cand], hWnd, FD_READ | FD_CLOSE);
+	WSAAsyncSelect(hClient[cand], hWnd, WM_CLIENT+cand, FD_READ | FD_CLOSE);
+	char c = cand+'1';
+	send(hClient[cand], &c, 1, 0);
 
 	if(players[0] && players[1])
 	{
@@ -143,34 +146,18 @@ void OnAccept(HWND hWnd)
 	InvalidateRect(hWnd, 0, FALSE);
 }
 
-void OnClient(HWND hWnd)
+void OnClient(HWND hWnd, int slot)
 {
-#if 0
-	if (hClient == INVALID_SOCKET) return;
+	if(hClient[slot] == INVALID_SOCKET) return;
 	char buf[1024];
-	int len = recv(hClient, buf, 1024, 0);
-	if (len <= 0)
+	int len = recv(hClient[slot], buf, 1024, 0);
+	if(len <= 0)
 	{
-		closesocket(hClient);
-		hClient = INVALID_SOCKET;
+		closesocket(hClient[slot]);
+		hClient[slot] = INVALID_SOCKET;
+		InvalidateRect(hWnd, 0, FALSE);
 		return;
 	}
-
-	int dir = -1;
-	if (buf[0] == 'N') dir = 0;
-	else if (buf[0] == 'E') dir = 1;
-	else if (buf[0] == 'S') dir = 2;
-	else if (buf[0] == 'W') dir = 3;
-	bool v = (dir != -1) ? kMaze.Move(dir) : true;
-	if (v == false) send(hClient, "0 0 0 0 0", 9, 0);
-	else
-	{
-		Sleep(100);
-		const char* buf = kMaze.GetCell();
-		send(hClient, buf, 9, 0);
-		InvalidateRect(hWnd, 0, FALSE);
-	}
-#endif
 }
 
 void OnCreate(HWND hWnd)
@@ -212,7 +199,7 @@ int OnCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
 }
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	switch (message)
+	switch(message)
 	{
 		case WM_CREATE:
 		{
@@ -240,7 +227,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			OnAccept(hWnd);
 			break;
 		case WM_CLIENT:
-			OnClient(hWnd);
+		case WM_CLIENT+1:
+			OnClient(hWnd, message-WM_CLIENT);
 			break;
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);

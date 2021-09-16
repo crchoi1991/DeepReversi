@@ -47,13 +47,13 @@ public:
 		addr.sin_port = htons(8888);
 		if( connect(sock, (SOCKADDR *)&addr, sizeof(addr)) != 0 ) return false;
 
-		char buf[512];
-		int len = recv(sock, buf, 512, 0);
+		char buf[4];
+		int len = recv(sock, buf, 1, 0);
 		if(len <= 0) return false;
-		buf[len] = 0;
 
-		turnColor = atoi(buf);
-		printf("turn : %s\n", turn?"White":"Black");
+		turnColor = buf[0]-'0';
+		printf("turn color : %s\n", turnColor==1?"White":"Black");
+		scores[0] = 60; scores[1] = 2; scores[2] = 2;
 
 		return true;
 	}
@@ -75,6 +75,7 @@ public:
 			else if(buf[i] == '3') scores[0]++;
 			else scores[buf[i]-'0']++;
 		}
+		printf("W : %d, B : %d\n", scores[1], scores[2]);
 		int depth, method;
 		if(scores[0] > 50) depth = LEVEL_HARD, method = USE_SCOREBOARD;
 		else if(scores[0] > LEVEL_HARD+4) depth = LEVEL_HARD+2, method = USE_SCOREBOARD;
@@ -107,7 +108,7 @@ bool PlayGame()
 	if(!game.Ready()) return false;
 
 	bool continueFlag = true;
-	while(game.IsGameOver())
+	while(!game.IsGameOver())
 	{
 		if(kbhit() && getch() == 'q') continueFlag = false;
 		if(!game.RunTurn()) return false;
