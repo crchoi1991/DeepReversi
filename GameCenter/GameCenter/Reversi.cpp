@@ -78,49 +78,13 @@ void Reversi::Draw(HDC hdc)
 	char str[128];
 	int len;
 	const char *playerstr[3] = { "Wait", "Network", "User" };
-	len = sprintf(str, "Player ¡Ü : %s", playerstr[players[0]]);
+	len = sprintf(str, "Player ¡Û : %s", playerstr[players[0]]);
 	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+20, str, len); 
-	len = sprintf(str, "Player ¡Û : %s", playerstr[players[1]]);
+	len = sprintf(str, "Player ¡Ü : %s", playerstr[players[1]]);
 	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+40, str, len); 
-	len = sprintf(str, "Score  ¡Ü : %3d", scores[1]);
+	len = sprintf(str, "Score  ¡Û : %3d", scores[1]);
 	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+80, str, len); 
-	len = sprintf(str, "Score  ¡Û : %3d", scores[2]);
+	len = sprintf(str, "Score  ¡Ü : %3d", scores[2]);
 	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+100, str, len); 
 	SelectObject(hdc, oldObj);
 }
-
-#if 0
-const int d[4] = { -MSIZE, 1, MSIZE, -1 };
-const int anti[4] = { 2, 3, 0, 1 };
-
-bool MyMaze::Move(int dir)
-{
-	if (m_ucMaze[m_nCur] & 1 << dir)
-	{
-		if (m_bEditMode == false) return false;
-		m_ucMaze[m_nCur] &= ~(1 << dir);
-		m_ucMaze[m_nCur + d[dir]] &= ~(1 << anti[dir]);
-	}
-	m_nCur += d[dir];
-	if (m_nStatus == FIRST_TARGET)
-	{
-		m_nScore[0]++;
-		if (m_nCur == 135)
-			m_nStatus = RETURN_HOME;
-	}
-	else if (m_nStatus == RETURN_HOME)
-	{
-		m_nScore[1]++;
-		if (m_nCur == 240)
-			m_nStatus = SECOND_TARGET;
-	}
-	else if (m_nStatus == SECOND_TARGET)
-	{
-		m_nScore[2] += m_ucMaze[m_nCur] >> 4;
-		if (m_nCur == 135)
-			m_nStatus = COMPLETE;
-	}
-	m_ucVisit[m_nCur] = m_nStatus;
-}
-
-#endif

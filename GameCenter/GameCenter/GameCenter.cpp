@@ -125,6 +125,12 @@ int GetPlayer(int player)
 	return cand;
 }
 
+void LeavePlayer(int player)
+{
+	players[player] = PLAYER_NOTASSIGN;
+	game.SetPlayer(player, 0);
+}
+
 void OnAccept(HWND hWnd)
 {
 	if(players[0] && players[1]) return;
@@ -146,13 +152,22 @@ void OnAccept(HWND hWnd)
 	InvalidateRect(hWnd, 0, FALSE);
 }
 
-void OnClient(HWND hWnd, int slot)
+void OnClient(HWND hWnd, int issue, int slot)
 {
 	if(hClient[slot] == INVALID_SOCKET) return;
+	if(issue == FD_CLOSE)
+	{
+		LeavePlayer(slot);
+		closesocket(hClient[slot]);
+		hClient[slot] = INVALID_SOCKET;
+		InvalidateRect(hWnd, 0, FALSE);
+		return;
+	}
 	char buf[1024];
 	int len = recv(hClient[slot], buf, 1024, 0);
 	if(len <= 0)
 	{
+		LeavePlayer(slot);
 		closesocket(hClient[slot]);
 		hClient[slot] = INVALID_SOCKET;
 		InvalidateRect(hWnd, 0, FALSE);
@@ -197,6 +212,7 @@ int OnCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
 	else return DefWindowProc(hWnd, WM_COMMAND, wParam, lParam);
 	return 0;
 }
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch(message)
@@ -228,7 +244,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		case WM_CLIENT:
 		case WM_CLIENT+1:
-			OnClient(hWnd, message-WM_CLIENT);
+			OnClient(hWnd, LOWORD(lParam), message-WM_CLIENT);
 			break;
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
