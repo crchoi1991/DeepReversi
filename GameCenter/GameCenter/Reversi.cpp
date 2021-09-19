@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <string>
+#include "limittbl.h"
 
 #define	CSIZE	64
 #define	XOFFSET	10
@@ -40,6 +41,26 @@ int Reversi::GetWidth()
 int Reversi::GetHeight()
 {
 	return RSIZE * CSIZE + YOFFSET * 2;
+}
+
+void Reversi::Place(int p, int turn)
+{
+	static int dxy[8] = { -8, -7, 1, 9, 8, 7, -1, -9 };
+	if(board[p] != 0) return;
+	board[p] = turn;
+	for(int dir = 0; dir < 8; dir++)
+	{
+		int cv = 0, antiturn = turn^3, rv = 0;
+		for(int i = 1; i <= limit[p][dir]; i++)
+		{
+			int np = p + dxy[dir]*i;
+			if(board[np] == antiturn) { rv = cv; break; }
+			if(board[np] != turn) break;
+			cv++;
+		}
+		if(rv == 0) continue;
+		for(int i = 1; i <= rv; i++) board[p+dxy[dir]*i] = turn;
+	}
 }
 
 void Reversi::Draw(HDC hdc)

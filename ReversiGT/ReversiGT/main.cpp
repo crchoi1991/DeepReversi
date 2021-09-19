@@ -1,5 +1,5 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
-
+#define _CRT_SECURE_NO_WARNINGS
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -37,6 +37,23 @@ public:
 	~Game() { if(sock != INVALID_SOCKET) closesocket(sock); }
 	int GetHint() const { return hint; }
 	bool IsGameOver() const { return !scores[0] || !scores[1] || !scores[2]; }
+	int Recv(SOCKET sock, char buf[])
+	{
+		int cmd = 0, reads = 0;
+		if(recv(sock, (char *)&cmd, 1, 0) <= 0) return false;
+		if(cmd == 'S') reads = 1;
+		else if(cmd == 'T') reads = 64;
+		else if(cmd == 'Q') reads = 4;
+		else return 0;
+		int len = 0;
+		while(len < reads)
+		{
+			int c = recv(sock, buf+len, reads-len, 0);
+			if(c <= 0) return false;
+			len += c;
+		}
+		return cmd;
+	}
 	bool Ready()
 	{
 		sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -48,8 +65,7 @@ public:
 		if( connect(sock, (SOCKADDR *)&addr, sizeof(addr)) != 0 ) return false;
 
 		char buf[4];
-		int len = recv(sock, buf, 1, 0);
-		if(len <= 0) return false;
+		if(Recv(sock, buf) != 'S') return false;
 
 		turnColor = buf[0]-'0';
 		printf("turn color : %s\n", turnColor==1?"White":"Black");
@@ -60,17 +76,17 @@ public:
 	bool RunTurn()
 	{
 		char buf[512];
-		for(int len = 0; len < 64; )
+		int cmd = Recv(sock, buf);
+		if(cmd == 'Q')
 		{
-			int slen = recv(sock, buf+len, 512-len, 0);
-			if(slen <= 0) return false;
-			len += slen;
+			printf("End of Game White : %d, Black : %d\n", buf[0]*10+buf[1]-'0'*11, buf[2]*10+buf[1]-'0'*11);
+			return false;
 		}
 		memset(scores, 0, sizeof(scores));
 		hint = 0;
 		for(int i = 0; i < 64; i++)
 		{
-			board[i] = buf[i]-'0';
+			board[i] = buf[i+1]-'0';
 			if(buf[i] == '0') { scores[0]++; hints[hint++] = i; }
 			else if(buf[i] == '3') scores[0]++;
 			else scores[buf[i]-'0']++;
@@ -81,6 +97,9 @@ public:
 		else if(scores[0] > LEVEL_HARD+4) depth = LEVEL_HARD+2, method = USE_SCOREBOARD;
 		else depth = scores[0], method = USE_PURE;
 		int choice = GetOptimal(depth, method);
+		sprintf(buf, "P%02d", choice);
+		send(sock, buf, 3, 0);
+		return true;
 	}
 	int GetOptimal(int depth, int method);
 private:

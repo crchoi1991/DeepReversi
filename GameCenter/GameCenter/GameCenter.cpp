@@ -1,4 +1,5 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
+#define	_CRT_SECURE_NO_WARNINGS
 #include "framework.h"
 #include "GameCenter.h"
 #include <stdio.h>
@@ -23,7 +24,7 @@
 // Global Variables:
 HINSTANCE hInst;								// current instance
 SOCKET hListen = INVALID_SOCKET;
-SOCKET hClient[2] = { INVALID_SOCKET, INVALID_SOCKET };
+SOCKET sockClient[2] = { INVALID_SOCKET, INVALID_SOCKET };
 int players[2];
 HDC memDC;
 HWND startGame;
@@ -131,6 +132,29 @@ void LeavePlayer(int player)
 	game.SetPlayer(player, 0);
 }
 
+void SendQuit()
+{
+	char buf[128];
+	int len = sprintf(buf, "Q%02d%02d", game.GetScores()[1], game.GetScores()[2]);
+	for(int i = 0; i < 2; i++)
+	{
+		if(players[i] != PLAYER_NETWORK) continue;
+		send(sockClient[i], buf, len, 0);
+		closesocket(sockClient[i]);
+		players[i] = PLAYER_NOTASSIGN;
+		sockClient[i] = INVALID_SOCKET;
+	}
+}
+
+void OnClose(HWND hWnd, int slot)
+{
+	LeavePlayer(slot);
+	closesocket(sockClient[slot]);
+	sockClient[slot] = INVALID_SOCKET;
+	SendQuit();
+	InvalidateRect(hWnd, 0, FALSE);
+}
+
 void OnAccept(HWND hWnd)
 {
 	if(players[0] && players[1]) return;
@@ -139,10 +163,11 @@ void OnAccept(HWND hWnd)
 	
 	SOCKADDR_IN addr;
 	int len = sizeof(addr);
-	hClient[cand] = accept(hListen, (SOCKADDR*)&addr, &len);
-	WSAAsyncSelect(hClient[cand], hWnd, WM_CLIENT+cand, FD_READ | FD_CLOSE);
-	char c = cand+'1';
-	send(hClient[cand], &c, 1, 0);
+	sockClient[cand] = accept(hListen, (SOCKADDR*)&addr, &len);
+	WSAAsyncSelect(sockClient[cand], hWnd, WM_CLIENT+cand, FD_READ | FD_CLOSE);
+	char packet[16];
+	sprintf(packet, "S%d", cand+1);
+	send(sockClient[cand], packet, 2, 0);
 
 	if(players[0] && players[1])
 	{
@@ -154,25 +179,23 @@ void OnAccept(HWND hWnd)
 
 void OnClient(HWND hWnd, int issue, int slot)
 {
-	if(hClient[slot] == INVALID_SOCKET) return;
-	if(issue == FD_CLOSE)
-	{
-		LeavePlayer(slot);
-		closesocket(hClient[slot]);
-		hClient[slot] = INVALID_SOCKET;
-		InvalidateRect(hWnd, 0, FALSE);
-		return;
-	}
+	if(sockClient[slot] == INVALID_SOCKET) return;
+	if(issue == FD_CLOSE) { OnClose(hWnd, slot); return; }
 	char buf[1024];
-	int len = recv(hClient[slot], buf, 1024, 0);
-	if(len <= 0)
+	buf[0] = 'T';
+	const char *board = game.GetBoard();
+	for(int i = 0; i < RSIZE*RSIZE; i++) buf[i+1] = board[i]+'0';
+	send(sockClient[slot], buf, 1+RSIZE*RSIZE, 0);
+	if(recv(sockClient[slot], buf, 1, 0) <= 0 || buf[0] != 'P') { OnClose(hWnd, slot); return; }
+	int len = 0;
+	while(len < 2)
 	{
-		LeavePlayer(slot);
-		closesocket(hClient[slot]);
-		hClient[slot] = INVALID_SOCKET;
-		InvalidateRect(hWnd, 0, FALSE);
-		return;
+		int c = recv(sockClient[slot], buf+len, 2-len, 0);
+		if(c <= 0) { OnClose(hWnd, slot); return; }
+		len += c;
 	}
+	int place = buf[0]*10+buf[1]-'0'*11;
+	game.Place(place, slot+1);
 }
 
 void OnCreate(HWND hWnd)
