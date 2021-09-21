@@ -10,22 +10,15 @@ public:
 	///	Start game
 	/// </summary>
 	void Start();
-	/// <summary>
-	///	Draw reversi board
-	/// </summary>
-	/// <param name="hdc">[IN] device context handle</param>
-	void Draw(HDC hdc);
 	int GetTurn() const { return turn; }
 	void SetPlayer(int idx, int p) { players[idx] = p; }
 	const char *GetBoard() const { return board; }
 	const int *GetScores() const { return scores; }
-	void Place(int p, int turn);
-	static int GetWidth();
-	static int GetHeight();
+	void Place(int p);
 
 private:
 	char board[RSIZE * RSIZE];
 	int scores[3], hint;
-	int turn;
+	int turn;					//	1: White, 2: Black
 	int players[2];
 };

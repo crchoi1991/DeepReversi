@@ -73,39 +73,12 @@ public:
 
 		return true;
 	}
-	bool RunTurn()
-	{
-		char buf[512];
-		int cmd = Recv(sock, buf);
-		if(cmd == 'Q')
-		{
-			printf("End of Game White : %d, Black : %d\n", buf[0]*10+buf[1]-'0'*11, buf[2]*10+buf[1]-'0'*11);
-			return false;
-		}
-		memset(scores, 0, sizeof(scores));
-		hint = 0;
-		for(int i = 0; i < 64; i++)
-		{
-			board[i] = buf[i+1]-'0';
-			if(buf[i] == '0') { scores[0]++; hints[hint++] = i; }
-			else if(buf[i] == '3') scores[0]++;
-			else scores[buf[i]-'0']++;
-		}
-		printf("W : %d, B : %d\n", scores[1], scores[2]);
-		int depth, method;
-		if(scores[0] > 50) depth = LEVEL_HARD, method = USE_SCOREBOARD;
-		else if(scores[0] > LEVEL_HARD+4) depth = LEVEL_HARD+2, method = USE_SCOREBOARD;
-		else depth = scores[0], method = USE_PURE;
-		int choice = GetOptimal(depth, method);
-		sprintf(buf, "P%02d", choice);
-		send(sock, buf, 3, 0);
-		return true;
-	}
+	bool RunTurn();
 	int GetOptimal(int depth, int method);
 private:
 	char board[64], hints[64];
 	int scores[3];		//	0 : empty 1 : white 2 : black
-	int hint, turn;
+	int hint;
 	int turnColor;
 	SOCKET sock;
 };
@@ -143,6 +116,40 @@ bool PlayGame()
 struct Gameboard { char board[64]; int score[3], hint; };
 void PutBoard(Gameboard &board, int index, int turn);
 
+bool Game::RunTurn()
+{
+	char buf[512];
+	int cmd = Recv(sock, buf);
+	if(cmd == 'Q')
+	{
+		printf("End of Game White: %d, Black: %d\n", buf[0]*10+buf[1]-'0'*11, buf[2]*10+buf[1]-'0'*11);
+		return false;
+	}
+	if(cmd != 'T')
+	{
+		printf("Unknown Command\n");
+		return false;
+	}
+	memset(scores, 0, sizeof(scores));
+	hint = 0;
+	for(int i = 0; i < 64; i++)
+	{
+		board[i] = buf[i]-'0';
+		if(buf[i] == '0') { scores[0]++; hints[hint++] = i; }
+		else if(buf[i] == '3') scores[0]++;
+		else scores[buf[i]-'0']++;
+	}
+	int depth, method;
+	if(scores[0] > 50) depth = LEVEL_HARD, method = USE_SCOREBOARD;
+	else if(scores[0] > LEVEL_HARD+4) depth = LEVEL_HARD+2, method = USE_SCOREBOARD;
+	else depth = scores[0], method = USE_PURE;
+	int choice = GetOptimal(depth, method);
+	sprintf(buf, "P%02d", choice);
+	send(sock, buf, 3, 0);
+	printf("Turn White: %d, Black: %d, Place: %d\n", scores[1], scores[2], choice);
+	return true;
+}
+
 int Game::GetOptimal(int maxdepth, int method)
 {
 	int nodenum = 0;
@@ -164,8 +171,8 @@ int Game::GetOptimal(int maxdepth, int method)
 	boards[0].hint = hint;
 	slot[0] = 0;
 
-	score[0] = (turn == 1)? MINVAL : MAXVAL;	
-	
+	score[0] = (turnColor == 1)? MINVAL : MAXVAL;	
+	int turn = turnColor;
 	for( ; ; )
 	{
 		//	Get next hint slot

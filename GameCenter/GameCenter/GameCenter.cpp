@@ -12,8 +12,11 @@
 #define	WM_ACCEPT			(WM_USER+1)
 #define	WM_CLIENT			(WM_USER+2)
 
-#define	WIDTH		640
-#define	HEIGHT		440
+#define	CSIZE	64
+#define	XOFFSET	10
+#define	YOFFSET	10
+#define	WIDTH	(RSIZE * CSIZE + XOFFSET * 2 + 130)
+#define	HEIGHT	(RSIZE * CSIZE + YOFFSET * 2)
 
 #define	BUTTON_USER_GAME	(2001)
 
@@ -30,15 +33,11 @@ HDC memDC;
 HWND startGame;
 Reversi game;
 
-// Forward declarations of functions included in this code module:
-ATOM				MyRegisterClass(HINSTANCE hInstance);
-HWND				InitInstance(HINSTANCE, int);
-LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
-
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
-	srand(time(0));
+	ATOM MyRegisterClass(HINSTANCE hInstance);
+	HWND InitInstance(HINSTANCE, int);
+	srand((unsigned)time(0));
 
 	//	WSA network initialize
 	WSADATA wsa;
@@ -82,6 +81,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
 	WNDCLASSEX wcex;
+	LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 	wcex.cbSize = sizeof(WNDCLASSEX);
 
@@ -104,7 +104,7 @@ HWND InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	hInst = hInstance; // Store instance handle in our global variable
 
-	RECT rt = { 0, 0, Reversi::GetWidth(), Reversi::GetHeight() };
+	RECT rt = { 0, 0, WIDTH, HEIGHT };
 	AdjustWindowRect(&rt, WS_OVERLAPPEDWINDOW, TRUE);
 
 	HWND hWnd = CreateWindow(L"ReversiGC", L"Reversi Game Center", 
@@ -126,10 +126,29 @@ int GetPlayer(int player)
 	return cand;
 }
 
-void LeavePlayer(int player)
+int Recv(int slot, char buf[])
 {
-	players[player] = PLAYER_NOTASSIGN;
-	game.SetPlayer(player, 0);
+	int cmd = 0;
+	if(recv(sockClient[slot], (char *)&cmd, 1, 0) <= 0) return 0;
+	int len = 0, reads = 0;
+	if(cmd == 'P') reads = 2;
+	else return 0;
+	while(len < reads)
+	{
+		int c = recv(sockClient[slot], buf+len, reads-len, 0);
+		if(c <= 0) return 0;
+		len += c;
+	}
+	return cmd;
+}
+
+void SendBoard(int slot)
+{
+	char buf[512];
+	buf[0] = 'T';
+	const char *board = game.GetBoard();
+	for(int i = 0; i < RSIZE*RSIZE; i++) buf[i+1] = board[i]+'0';
+	send(sockClient[slot], buf, RSIZE*RSIZE+1, 0);
 }
 
 void SendQuit()
@@ -138,20 +157,29 @@ void SendQuit()
 	int len = sprintf(buf, "Q%02d%02d", game.GetScores()[1], game.GetScores()[2]);
 	for(int i = 0; i < 2; i++)
 	{
-		if(players[i] != PLAYER_NETWORK) continue;
-		send(sockClient[i], buf, len, 0);
-		closesocket(sockClient[i]);
+		if(players[i] == PLAYER_NETWORK)
+		{
+			send(sockClient[i], buf, len, 0);
+			closesocket(sockClient[i]);
+		}
 		players[i] = PLAYER_NOTASSIGN;
 		sockClient[i] = INVALID_SOCKET;
 	}
 }
 
+void StartGame(HWND hWnd)
+{
+	EnableWindow(startGame, FALSE);
+	game.Start();
+	int slot = game.GetTurn() - 1;
+	if(players[slot] == PLAYER_NETWORK) SendBoard(slot);
+	InvalidateRect(hWnd, 0, FALSE);
+}
+
 void OnClose(HWND hWnd, int slot)
 {
-	LeavePlayer(slot);
-	closesocket(sockClient[slot]);
-	sockClient[slot] = INVALID_SOCKET;
 	SendQuit();
+	EnableWindow(startGame, TRUE);
 	InvalidateRect(hWnd, 0, FALSE);
 }
 
@@ -169,11 +197,7 @@ void OnAccept(HWND hWnd)
 	sprintf(packet, "S%d", cand+1);
 	send(sockClient[cand], packet, 2, 0);
 
-	if(players[0] && players[1])
-	{
-		EnableWindow(startGame, FALSE);
-		game.Start();
-	}
+	if(players[0] && players[1]) StartGame(hWnd);
 	InvalidateRect(hWnd, 0, FALSE);
 }
 
@@ -182,34 +206,40 @@ void OnClient(HWND hWnd, int issue, int slot)
 	if(sockClient[slot] == INVALID_SOCKET) return;
 	if(issue == FD_CLOSE) { OnClose(hWnd, slot); return; }
 	char buf[1024];
-	buf[0] = 'T';
-	const char *board = game.GetBoard();
-	for(int i = 0; i < RSIZE*RSIZE; i++) buf[i+1] = board[i]+'0';
-	send(sockClient[slot], buf, 1+RSIZE*RSIZE, 0);
-	if(recv(sockClient[slot], buf, 1, 0) <= 0 || buf[0] != 'P') { OnClose(hWnd, slot); return; }
-	int len = 0;
-	while(len < 2)
-	{
-		int c = recv(sockClient[slot], buf+len, 2-len, 0);
-		if(c <= 0) { OnClose(hWnd, slot); return; }
-		len += c;
-	}
+	int cmd = Recv(slot, buf);
+	if(cmd != 'P') { OnClose(hWnd, slot); return; }
 	int place = buf[0]*10+buf[1]-'0'*11;
-	game.Place(place, slot+1);
+	game.Place(place);
+	int nextSlot = game.GetTurn() - 1;
+	if(players[nextSlot] == PLAYER_NETWORK) SendBoard(nextSlot);
+	InvalidateRect(hWnd, 0, FALSE);
+}
+
+void OnLButtonDown(HWND hWnd, int x, int y)
+{
+	int slot = game.GetTurn() - 1;
+	if(players[slot] != PLAYER_USER) return;
+	int nx = (x-XOFFSET)/CSIZE, ny = (y-YOFFSET)/CSIZE;
+	if(nx < 0 || nx >= 8 || ny < 0 || ny >= 8) return;
+	int p = ny*8 + nx;
+	if(game.GetBoard()[p] != 0) return;
+	game.Place(p);
+	slot = game.GetTurn() - 1;
+	if(players[slot] == PLAYER_NETWORK) SendBoard(slot);
+	InvalidateRect(hWnd, 0, FALSE);
 }
 
 void OnCreate(HWND hWnd)
 {
 	HDC hdc = GetDC(hWnd);
-	HBITMAP hBitmap = CreateCompatibleBitmap(hdc, Reversi::GetWidth(), Reversi::GetHeight());
+	HBITMAP hBitmap = CreateCompatibleBitmap(hdc, WIDTH, HEIGHT);
 	memDC = CreateCompatibleDC(hdc);
 	SelectObject(memDC, hBitmap);
 	ReleaseDC(hWnd, hdc);
 	startGame = CreateWindow(L"BUTTON", L"User Game", 
 		WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-		Reversi::GetWidth() - 120,
-		Reversi::GetHeight() - 50,
-		110, 30, hWnd, (HMENU)BUTTON_USER_GAME, 
+		WIDTH - 120, HEIGHT - 50, 110, 30, 
+		hWnd, (HMENU)BUTTON_USER_GAME, 
 		(HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), 
 		NULL);
 	EnableWindow(startGame, TRUE);
@@ -217,6 +247,7 @@ void OnCreate(HWND hWnd)
 
 int OnCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
 {
+	INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
 	int wmId = LOWORD(wParam);
 	int wmEvent = HIWORD(wParam);
 	// Parse the menu selections:
@@ -229,11 +260,23 @@ int OnCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
 			int cand = GetPlayer(PLAYER_USER);
 			game.SetPlayer(cand, PLAYER_USER);
 			EnableWindow(startGame, FALSE);
+			if(players[0] && players[1]) StartGame(hWnd);
 			InvalidateRect(hWnd, 0, TRUE);
 		}
 	}
-	else return DefWindowProc(hWnd, WM_COMMAND, wParam, lParam);
+	else return (int)DefWindowProc(hWnd, WM_COMMAND, wParam, lParam);
 	return 0;
+}
+
+void OnPaint(HWND hWnd)
+{
+	void Draw(HDC hdc);
+
+	PAINTSTRUCT ps;
+	HDC hdc = BeginPaint(hWnd, &ps);
+	Draw(memDC);
+	BitBlt(hdc, 0, 0, WIDTH, HEIGHT, memDC, 0, 0, SRCCOPY);
+	EndPaint(hWnd, &ps);
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -252,11 +295,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_PAINT:
 		{
-			PAINTSTRUCT ps;
-			HDC hdc = BeginPaint(hWnd, &ps);
-			game.Draw(memDC);
-			BitBlt(hdc, 0, 0, Reversi::GetWidth(), Reversi::GetHeight(), memDC, 0, 0, SRCCOPY);
-			EndPaint(hWnd, &ps);
+			OnPaint(hWnd);
+			break;
+		}
+		case WM_LBUTTONDOWN:
+		{
+			OnLButtonDown(hWnd, LOWORD(lParam), HIWORD(lParam));
 			break;
 		}
 		case WM_DESTROY:
@@ -288,4 +332,53 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM)
 		}
 	}
 	return (INT_PTR)FALSE;
+}
+
+void Draw(HDC hdc)
+{
+	const char *board = game.GetBoard();
+	const int *scores = game.GetScores();
+	HGDIOBJ oldObj = SelectObject(hdc, GetStockObject(DC_BRUSH));
+	SelectObject(hdc, GetStockObject(DC_PEN));
+	SetDCBrushColor(hdc, RGB(255, 255, 255));
+	SetDCPenColor(hdc, RGB(255, 0, 0));
+	Rectangle(hdc, 0, 0, WIDTH, HEIGHT);
+	SetDCPenColor(hdc, RGB(0, 0, 0));
+	SetDCBrushColor(hdc, RGB(240, 240, 150));
+	Rectangle(hdc, XOFFSET, YOFFSET, XOFFSET+RSIZE*CSIZE+2, YOFFSET+RSIZE*CSIZE+2);
+	for(int i = 0; i <= RSIZE; i++)
+	{
+		MoveToEx(hdc, XOFFSET + i*CSIZE, YOFFSET, 0);
+		LineTo(hdc, XOFFSET + i*CSIZE, YOFFSET + RSIZE*CSIZE);
+		MoveToEx(hdc, XOFFSET, YOFFSET + i*CSIZE, 0);
+		LineTo(hdc, XOFFSET + RSIZE*CSIZE, YOFFSET + i*CSIZE);
+	}
+	for(int r = 0; r < RSIZE; r++)
+	{
+		for(int c = 0; c < RSIZE; c++)
+		{
+			int idx = r*RSIZE+c;
+			if(board[idx] == 3) continue;
+			SetDCBrushColor(hdc, (board[idx]==1)?RGB(255, 255, 255):RGB(100, 100, 120));
+			if(board[idx] == 0) Rectangle(hdc, XOFFSET+CSIZE*c+15, YOFFSET+CSIZE*r+15, XOFFSET+CSIZE*c+CSIZE-15, YOFFSET+CSIZE*r+CSIZE-15);
+			else
+			{
+				Ellipse(hdc, XOFFSET+CSIZE*c+5, YOFFSET+CSIZE*r+5, XOFFSET+CSIZE*c+CSIZE-3, YOFFSET+CSIZE*r+CSIZE-3);
+				Ellipse(hdc, XOFFSET+CSIZE*c+4, YOFFSET+CSIZE*r+4, XOFFSET+CSIZE*c+CSIZE-4, YOFFSET+CSIZE*r+CSIZE-4);
+				Ellipse(hdc, XOFFSET+CSIZE*c+3, YOFFSET+CSIZE*r+3, XOFFSET+CSIZE*c+CSIZE-5, YOFFSET+CSIZE*r+CSIZE-5);
+			}
+		}
+	}
+	char str[128];
+	int len;
+	const char *playerstr[3] = { "Wait", "Network", "User" };
+	len = sprintf(str, "Player ¡Û : %s", playerstr[players[0]]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+20, str, len); 
+	len = sprintf(str, "Player ¡Ü : %s", playerstr[players[1]]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+40, str, len); 
+	len = sprintf(str, "Score  ¡Û : %3d", scores[1]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+80, str, len); 
+	len = sprintf(str, "Score  ¡Ü : %3d", scores[2]);
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+100, str, len); 
+	SelectObject(hdc, oldObj);
 }
