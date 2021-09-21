@@ -14,7 +14,7 @@ public:
 	void SetPlayer(int idx, int p) { players[idx] = p; }
 	const char *GetBoard() const { return board; }
 	const int *GetScores() const { return scores; }
-	void Place(int p);
+	bool Place(int p);
 
 private:
 	char board[RSIZE * RSIZE];

@@ -154,16 +154,16 @@ void SendBoard(int slot)
 void SendQuit()
 {
 	char buf[128];
-	int len = sprintf(buf, "Q%02d%02d", game.GetScores()[1], game.GetScores()[2]);
+	sprintf(buf, "Q%02d%02d", game.GetScores()[1], game.GetScores()[2]);
 	for(int i = 0; i < 2; i++)
 	{
-		if(players[i] == PLAYER_NETWORK)
+		if(players[i] == PLAYER_NETWORK && sockClient[i] != INVALID_SOCKET)
 		{
-			send(sockClient[i], buf, len, 0);
+			send(sockClient[i], buf, 5, 0);
 			closesocket(sockClient[i]);
+			sockClient[i] = INVALID_SOCKET;
 		}
 		players[i] = PLAYER_NOTASSIGN;
-		sockClient[i] = INVALID_SOCKET;
 	}
 }
 
@@ -176,7 +176,7 @@ void StartGame(HWND hWnd)
 	InvalidateRect(hWnd, 0, FALSE);
 }
 
-void OnClose(HWND hWnd, int slot)
+void OnClose(HWND hWnd)
 {
 	SendQuit();
 	EnableWindow(startGame, TRUE);
@@ -204,12 +204,12 @@ void OnAccept(HWND hWnd)
 void OnClient(HWND hWnd, int issue, int slot)
 {
 	if(sockClient[slot] == INVALID_SOCKET) return;
-	if(issue == FD_CLOSE) { OnClose(hWnd, slot); return; }
+	if(issue == FD_CLOSE) { OnClose(hWnd); return; }
 	char buf[1024];
 	int cmd = Recv(slot, buf);
-	if(cmd != 'P') { OnClose(hWnd, slot); return; }
+	if(cmd != 'P') { OnClose(hWnd); return; }
 	int place = buf[0]*10+buf[1]-'0'*11;
-	game.Place(place);
+	if(!game.Place(place)) { OnClose(hWnd); return; }
 	int nextSlot = game.GetTurn() - 1;
 	if(players[nextSlot] == PLAYER_NETWORK) SendBoard(nextSlot);
 	InvalidateRect(hWnd, 0, FALSE);
@@ -223,7 +223,7 @@ void OnLButtonDown(HWND hWnd, int x, int y)
 	if(nx < 0 || nx >= 8 || ny < 0 || ny >= 8) return;
 	int p = ny*8 + nx;
 	if(game.GetBoard()[p] != 0) return;
-	game.Place(p);
+	if(!game.Place(p)) { OnClose(hWnd); return; }
 	slot = game.GetTurn() - 1;
 	if(players[slot] == PLAYER_NETWORK) SendBoard(slot);
 	InvalidateRect(hWnd, 0, FALSE);

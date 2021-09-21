@@ -29,10 +29,10 @@ void Reversi::Start()
 	hint = 4;
 }
 
-void Reversi::Place(int p)
+bool Reversi::Place(int p)
 {
 	static int dxy[8] = { -8, -7, 1, 9, 8, 7, -1, -9 };
-	if(board[p] != 0) return;
+	if(board[p] != 0) return false;
 	board[p] = turn;
 	for(int dir = 0; dir < 8; dir++)
 	{
@@ -47,27 +47,37 @@ void Reversi::Place(int p)
 		if(rv == 0) continue;
 		for(int i = 1; i <= rv; i++) board[p+dxy[dir]*i] = turn;
 	}
-	turn ^= 3;
-	for(p = 0; p < 64; p++)
+	for(int t = 0; t < 2; t++)
 	{
-		if(board[p] == 1 || board[p] == 2) continue;
-		board[p] = 3;
-		for(int dir = 0; dir < 8; dir++)
+		int hints = 0;
+		turn ^= 3;
+		scores[1] = scores[2] = 0;
+		for(p = 0; p < 64; p++)
 		{
-			int cv = 0, antiturn = turn^3, rv = 0;
-			for(int i = 1; i <= limit[p][dir]; i++)
+			if(board[p] == 1 || board[p] == 2) { scores[board[p]]++; continue; }
+			board[p] = 3;
+			for(int dir = 0; dir < 8; dir++)
 			{
-				int np = p + dxy[dir]*i;
-				if(board[np] == turn) { rv = cv; break; }
-				if(board[np] != antiturn) break;
-				cv++;
-			}
-			if(rv)
-			{
-				board[p] = 0;
-				break;
+				int cv = 0, antiturn = turn^3, rv = 0;
+				for(int i = 1; i <= limit[p][dir]; i++)
+				{
+					int np = p + dxy[dir]*i;
+					if(board[np] == turn) { rv = cv; break; }
+					if(board[np] != antiturn) break;
+					cv++;
+				}
+				if(rv)
+				{
+					hints++;
+					board[p] = 0;
+					break;
+				}
 			}
 		}
+		scores[0] = 64 - scores[1] - scores[2];
+		if(hints) return true;
+		if(!scores[0]) return false;
 	}
+	return false;
 }
 

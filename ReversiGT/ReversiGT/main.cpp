@@ -103,7 +103,7 @@ bool PlayGame()
 	while(!game.IsGameOver())
 	{
 		if(kbhit() && getch() == 'q') continueFlag = false;
-		if(!game.RunTurn()) return false;
+		if(!game.RunTurn()) break;
 	}
 	
 	return continueFlag;
@@ -125,6 +125,7 @@ bool Game::RunTurn()
 		printf("End of Game White: %d, Black: %d\n", buf[0]*10+buf[1]-'0'*11, buf[2]*10+buf[1]-'0'*11);
 		return false;
 	}
+	if(cmd == 0) { closesocket(sock); return false; }
 	if(cmd != 'T')
 	{
 		printf("Unknown Command\n");
