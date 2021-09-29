@@ -2,16 +2,21 @@ import socket
 import random
 import keyboard
 
-reads = { "S" : 1, "T" : 64, "Q" : 4 }
+reads = { "S" : 1, "T" : 64, "Q" : 4, "A" : 0 }
 def recv(sock):
     buf = b""
     try:
         cmd = sock.recv(1)
+        if len(cmd) <= 0: return "E", "Network closed"
         cmd = cmd.decode("ascii")
+        if cmd not in reads:
+            return "E", f"Unknown command {cmd}"
         while len(buf) < reads[cmd]:
-            buf += sock.recv(reads[cmd]-len(buf))
+            t = sock.recv(reads[cmd]-len(buf))
+            if len(t) <= 0: return "E", "Network closed"
+            buf += t
     except socket.error:
-        return "E", None
+        return "E", "Socket error"
     return cmd, buf.decode("ascii")
 
 def OnQuit(buf):
@@ -41,10 +46,15 @@ while not quitFlag:
     while True:
         if keyboard.is_pressed("q"): quitFlag = True
         cmd, buf = recv(sock)
-        if cmd == "E": break
+        if cmd == "E":
+            print(f"Network Error!! {buf}")
+            break
         if cmd == "Q":
             w = OnQuit(buf)
             winlose[w] += 1
+            break
+        if cmd == "A":
+            print("Game Abort!!")
             break
         hints = []
         board = []

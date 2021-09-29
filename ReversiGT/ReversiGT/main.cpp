@@ -37,23 +37,7 @@ public:
 	~Game() { if(sock != INVALID_SOCKET) closesocket(sock); }
 	int GetHint() const { return hint; }
 	bool IsGameOver() const { return !scores[0] || !scores[1] || !scores[2]; }
-	int Recv(SOCKET sock, char buf[])
-	{
-		int cmd = 0, reads = 0;
-		if(recv(sock, (char *)&cmd, 1, 0) <= 0) return false;
-		if(cmd == 'S') reads = 1;
-		else if(cmd == 'T') reads = 64;
-		else if(cmd == 'Q') reads = 4;
-		else return 0;
-		int len = 0;
-		while(len < reads)
-		{
-			int c = recv(sock, buf+len, reads-len, 0);
-			if(c <= 0) return false;
-			len += c;
-		}
-		return cmd;
-	}
+	int Recv(SOCKET sock, char buf[]);
 	bool Ready()
 	{
 		sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -116,6 +100,25 @@ bool PlayGame()
 struct Gameboard { char board[64]; int score[3], hint; };
 void PutBoard(Gameboard &board, int index, int turn);
 
+int Game::Recv(SOCKET sock, char buf[])
+{
+	int cmd = 0, reads = 0;
+	if(recv(sock, (char *)&cmd, 1, 0) <= 0) return false;
+	if(cmd == 'S') reads = 1;
+	else if(cmd == 'T') reads = 64;
+	else if(cmd == 'Q') reads = 4;
+	else if(cmd == 'A') return cmd;
+	else return 0;
+	int len = 0;
+	while(len < reads)
+	{
+		int c = recv(sock, buf+len, reads-len, 0);
+		if(c <= 0) return false;
+		len += c;
+	}
+	return cmd;
+}
+
 bool Game::RunTurn()
 {
 	char buf[512];
@@ -123,6 +126,11 @@ bool Game::RunTurn()
 	if(cmd == 'Q')
 	{
 		printf("End of Game White: %d, Black: %d\n", buf[0]*10+buf[1]-'0'*11, buf[2]*10+buf[1]-'0'*11);
+		return false;
+	}
+	if(cmd == 'A')
+	{
+		printf("Game Abort\n");
 		return false;
 	}
 	if(cmd == 0) { closesocket(sock); return false; }
