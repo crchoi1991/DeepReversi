@@ -6,14 +6,16 @@ reads = { "S" : 1, "T" : 64, "Q" : 4, "A" : 0 }
 def recv(sock):
     buf = b""
     try:
-        cmd = sock.recv(1)
-        if len(cmd) <= 0: return "E", "Network closed"
+        while True:
+            cmd = sock.recv(1)
+            if cmd == None: return "E", "Network closed"
+            if len(cmd) == 1: break
         cmd = cmd.decode("ascii")
         if cmd not in reads:
             return "E", f"Unknown command {cmd}"
         while len(buf) < reads[cmd]:
             t = sock.recv(reads[cmd]-len(buf))
-            if len(t) <= 0: return "E", "Network closed"
+            if t == None: return "E", "Network closed"
             buf += t
     except socket.error:
         return "E", "Socket error"
@@ -32,15 +34,15 @@ quitFlag = False
 winlose = [0, 0, 0]
 
 while not quitFlag:
-    print(f"Game {winlose[0]+winlose[1]+winlose[2]+1}")
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try: sock.connect(("127.0.0.1", 8888))
     except socket.error: break
-    except socket.timeout: break
+    except socket.timeout: continue
 
     cmd, buf = recv(sock)
     turn = int(buf[0])
-    print(f"Turn: {turn}")
+    colors = ( "", "White", "Black" )
+    print(f"Game {winlose[0]+winlose[1]+winlose[2]+1} Turn: {colors[turn]}")
     if cmd == "E": break
 
     while True:
