@@ -27,6 +27,7 @@ void Reversi::Start()
 	scores[0] = 60;
 	scores[1] = scores[2] = 2;
 	hint = 4;
+	turn = 1;
 }
 
 bool Reversi::Place(int p)

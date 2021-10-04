@@ -34,29 +34,11 @@ class Game
 {
 public:
 	Game() : sock(INVALID_SOCKET) { }
-	~Game() { if(sock != INVALID_SOCKET) closesocket(sock); }
 	int GetHint() const { return hint; }
 	bool IsGameOver() const { return !scores[0] || !scores[1] || !scores[2]; }
 	int Recv(SOCKET sock, char buf[]);
-	bool Ready()
-	{
-		sock = socket(AF_INET, SOCK_STREAM, 0);
-
-		SOCKADDR_IN addr;
-		addr.sin_family = AF_INET;
-		addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-		addr.sin_port = htons(8888);
-		if( connect(sock, (SOCKADDR *)&addr, sizeof(addr)) != 0 ) return false;
-
-		char buf[4];
-		if(Recv(sock, buf) != 'S') return false;
-
-		turnColor = buf[0]-'0';
-		printf("turn color : %s\n", turnColor==1?"White":"Black");
-		scores[0] = 60; scores[1] = 2; scores[2] = 2;
-
-		return true;
-	}
+	bool Ready();
+	void Close();
 	bool RunTurn();
 	int GetOptimal(int depth, int method);
 private:
@@ -89,6 +71,8 @@ bool PlayGame()
 		if(kbhit() && getch() == 'q') continueFlag = false;
 		if(!game.RunTurn()) break;
 	}
+	game.Close();
+	Sleep(1000);
 	
 	return continueFlag;
 }
@@ -119,6 +103,32 @@ int Game::Recv(SOCKET sock, char buf[])
 	return cmd;
 }
 
+bool Game::Ready()
+{
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+
+	SOCKADDR_IN addr;
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	addr.sin_port = htons(8888);
+	if( connect(sock, (SOCKADDR *)&addr, sizeof(addr)) != 0 ) return false;
+
+	char buf[4];
+	if(Recv(sock, buf) != 'S') return false;
+
+	turnColor = buf[0]-'0';
+	printf("turn color : %s\n", turnColor==1?"White":"Black");
+	scores[0] = 60; scores[1] = 2; scores[2] = 2;
+
+	return true;
+}
+
+void Game::Close()
+{
+	closesocket(sock);
+	sock = INVALID_SOCKET;
+}
+
 bool Game::RunTurn()
 {
 	char buf[512];
@@ -133,7 +143,7 @@ bool Game::RunTurn()
 		printf("Game Abort\n");
 		return false;
 	}
-	if(cmd == 0) { closesocket(sock); return false; }
+	if(cmd == 0) return false;
 	if(cmd != 'T')
 	{
 		printf("Unknown Command\n");

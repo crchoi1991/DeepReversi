@@ -404,5 +404,7 @@ void Draw(HDC hdc)
 	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+80, str, len); 
 	len = sprintf(str, "Score  ¡Ü : %3d", scores[2]);
 	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+100, str, len); 
+	len = sprintf(str, "Current Turn : %s", game.GetTurn()==1?"¡Û":"¡Ü");
+	TextOutA(hdc, XOFFSET*2 + RSIZE*CSIZE, YOFFSET+180, str, len); 
 	SelectObject(hdc, oldObj);
 }

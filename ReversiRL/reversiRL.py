@@ -1,6 +1,7 @@
 import socket
 import random
 import keyboard
+import time
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
@@ -12,7 +13,7 @@ gamma = 0.95
 epsilon = 1
 epsilon_min = 0.001
 epsilon_decay = 0.999
-batch_size = 24
+batch_size = 32
 
 # memory
 memory = deque([], maxlen=500)
@@ -47,40 +48,51 @@ def OnQuit(buf):
     return win, result
 
 def BuildModel():
-	model = keras.Sequential([
-		keras.layers.Dense(64, activation="relu"),
-		keras.layers.Dense(64, activation="relu"),
-		keras.layers.Dense(64, activation="linear")
-	])
-	model.compile(loss="mean_squared_error",
-		optimizer=keras.optimizers.Adam(learning_rate=alpha))
-	return model
+    model = keras.Sequential([
+	keras.layers.Dense(128, input_dim = 64, activation="relu"),
+	keras.layers.Dense(128, activation="relu"),
+	keras.layers.Dense(64, activation="linear")
+    ])
+    model.compile(loss="mean_squared_error",
+    optimizer=keras.optimizers.Adam(learning_rate=alpha))
+    return model
 	
 def Action(model, board, turn):
     hints = []
-    state = np.zeros(64);
+    state = np.zeros((1, 64));
     for i in range(64):
-        c = int(buf[i])
+        c = int(board[i])
         if c == 0: 
-            state[i] = -1.0
+            state[0, i] = -1.0
             hints.append(i)
-        elif c == 3: state[i] = -1.0
-        elif c == turn: state[i] = 1.0
-        else: state[i] = 0.0
-        predict = model.predict(state)
-        if np.random.rand() <= epsilon:
-            return state, predict, hints[random.randrange(len(hints))]
-        return state, predict, np.argmax(predict[board==-1])
+        elif c == 3: state[0, i] = -1.0
+        elif c == turn: state[0, i] = 1.0
+        else: state[0, i] = 0.0
+    predict = model.predict(state)
+    if np.random.rand() <= epsilon:
+        return state[0], predict[0], hints[random.randrange(len(hints))]
+    p = hints[0]
+    for i in range(1, len(hints)):
+        if predict[0][hints[i]] > predict[0][p]: p = hints[i]
+    if board[p] != "0":
+        print("Invalid position : %d"%p)
+        return state[0], predict[0], hints[random.randrange(len(hints))]
+    return state[0], predict[0], p
 
 def Replay(model):
+    if len(memory) < batch_size: return
     minibatch = random.sample(memory, batch_size)
     x, y = [], []
     for state, predict, action, reward in minibatch:
         x.append(state)
+        if len(predict) != 64:
+            print("Error in predict: %s"%predict)
+            return
         predict[action] = reward
         y.append(predict)
-    model.fit(x, y)
-    if epsilon > epsilon_min: epsilon *= epsilon_decay
+    xarray = np.array(x)
+    yarray = np.array(y)
+    model.fit(xarray, yarray, epochs=4)
 	
 quitFlag = False
 winlose = [0, 0, 0]
@@ -108,10 +120,12 @@ while not quitFlag:
         if cmd == "Q":
             w, r = OnQuit(buf)
             winlose[w] += 1
-            reward = w*1000 + r*100
-            for e in episode[::-1]:
-                memory.append((e[0], e[1], e[2], reward))
+            reward = w*0.5
+            for state, predict, p in episode[::-1]:
+                memory.append((state, predict, p, reward))
                 reward *= gamma
+            Replay(model)
+            if epsilon > epsilon_min: epsilon *= epsilon_decay
             break
         if cmd == "A":
             print("Game Abort!!")
@@ -122,8 +136,9 @@ while not quitFlag:
         state, predict, p = Action(model, buf, turn)
         sock.send(("P%02d"%p).encode("ascii"))
         episode.append((state, predict, p))
+        print("Place (%d, %d)"%(p/8, p%8))
 
     sock.close()
-    Replay(model)
+    time.sleep(1.0)
 
 print(f"Wins: {winlose[1]}, Loses: {winlose[0]}")
