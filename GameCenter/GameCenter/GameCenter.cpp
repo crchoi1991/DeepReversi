@@ -33,6 +33,7 @@ int players[2];
 HDC memDC;
 HWND startGame;
 Reversi game;
+bool gameRunning = false;
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
@@ -170,10 +171,13 @@ void SendQuit()
 	}
 }
 
-void SendAbort(int slot)
+void SendAbort()
 {
-	send(sockClient[slot], "A", 1, 0);
-	players[slot] = PLAYER_WAITCLOSE;
+	for(int slot = 0; slot < 2; slot++)
+	{
+		if(sockClient[slot] != INVALID_SOCKET)
+			send(sockClient[slot], "A", 1, 0);
+	}
 }
 
 void StartGame(HWND hWnd)
@@ -184,27 +188,38 @@ void StartGame(HWND hWnd)
 	game.Start();
 	int slot = game.GetTurn() - 1;
 	if(players[slot] == PLAYER_NETWORK) SendBoard(slot);
+	gameRunning = true;
+	listen(hListen, 0);
 	InvalidateRect(hWnd, 0, FALSE);
 }
 
-void OnClose(HWND hWnd, int slot)
+void CloseGame(HWND hWnd)
 {
-	if(players[slot] == PLAYER_NETWORK)
+	gameRunning = false;
+	for(int slot = 0; slot < 2; slot++)
 	{
-		if(players[slot^1] == PLAYER_NETWORK) SendAbort(slot^1);
-		else if(players[slot^1] == PLAYER_USER) players[slot^1] = PLAYER_NOTASSIGN;
+		if(sockClient[slot] != INVALID_SOCKET) closesocket(sockClient[slot]);
+		sockClient[slot] = INVALID_SOCKET;
+		players[slot] = PLAYER_NOTASSIGN;
 	}
-	closesocket(sockClient[slot]);
-	sockClient[slot] = INVALID_SOCKET;
-	players[slot] = PLAYER_NOTASSIGN;
+	listen(hListen, 2);
 	EnableWindow(startGame, TRUE);
 	InvalidateRect(hWnd, 0, FALSE);
+}
+
+void OnClose(HWND hWnd)
+{
+	if(gameRunning)
+	{
+		SendAbort();
+		CloseGame(hWnd);
+	}
 }
 
 void OnQuit(HWND hWnd)
 {
 	SendQuit();
-	InvalidateRect(hWnd, 0, FALSE);
+	CloseGame(hWnd);
 }
 
 void OnAccept(HWND hWnd)
@@ -228,10 +243,10 @@ void OnAccept(HWND hWnd)
 void OnClient(HWND hWnd, int issue, int slot)
 {
 	if(sockClient[slot] == INVALID_SOCKET) return;
-	if(issue == FD_CLOSE) { OnClose(hWnd, slot); return; }
+	if(issue == FD_CLOSE) { OnClose(hWnd); return; }
 	char buf[1024];
 	int cmd = Recv(slot, buf);
-	if(cmd != 'P') { OnClose(hWnd, slot); return; }
+	if(cmd != 'P') { OnClose(hWnd); return; }
 	int place = buf[0]*10+buf[1]-'0'*11;
 	if(!game.Place(place)) { OnQuit(hWnd); return; }
 	int nextSlot = game.GetTurn() - 1;
