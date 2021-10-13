@@ -1,7 +1,8 @@
 Debug
 x64
 .vs
-training
+training*
+
 # Prerequisites
 *.d
 *.idb
