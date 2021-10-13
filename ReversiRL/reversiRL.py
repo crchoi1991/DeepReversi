@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from collections import deque
+import os.path
 
 # parameters
 alpha = 0.001
@@ -17,6 +18,7 @@ batch_size = 32
 
 # memory
 memory = deque([], maxlen=500)
+learningCount = 0
 
 reads = { "S" : 1, "T" : 64, "Q" : 4, "A" : 0 }
 def recv(sock):
@@ -49,12 +51,25 @@ def OnQuit(buf):
 
 def BuildModel():
     model = keras.Sequential([
-	keras.layers.Dense(128, input_dim = 64, activation="relu"),
-	keras.layers.Dense(128, activation="relu"),
+	keras.layers.Dense(256, input_dim = 64, activation="relu"),
+	keras.layers.Dense(256, activation="relu"),
+	keras.layers.Dense(256, activation="relu"),
 	keras.layers.Dense(64, activation="linear")
     ])
     model.compile(loss="mean_squared_error",
-    optimizer=keras.optimizers.Adam(learning_rate=alpha))
+        optimizer=keras.optimizers.Adam(learning_rate=alpha))
+
+    # Load weights
+    dir = os.path.dirname("training/cp_000000.ckpt")
+    latest = tf.train.latest_checkpoint(dir)
+    print(f"Load weights {latest}")
+    if latest is not None:
+        global epsilon, learningCount
+        model.load_weights(latest)
+        idx = latest.find("cp_")
+        learningCount = int(latest[idx+3:idx+9])
+        epsilon *= epsilon_decay**learningCount
+        if epsilon < epsilon_min: epsilon = epsilon_min
     return model
 	
 def Action(model, board, turn):
@@ -80,6 +95,7 @@ def Action(model, board, turn):
     return state[0], predict[0], p
 
 def Replay(model):
+    global learningCount
     if len(memory) < batch_size: return
     minibatch = random.sample(memory, batch_size)
     x, y = [], []
@@ -92,8 +108,15 @@ def Replay(model):
         y.append(predict)
     xarray = np.array(x)
     yarray = np.array(y)
-    model.fit(xarray, yarray, epochs=4)
-	
+
+    model.fit(xarray, yarray, epochs=10)
+
+    # save checkpoint
+    path = "training/cp_{0:06}.ckpt"
+    learningCount += 1
+    model.save_weights(path.format(learningCount))
+    print("Save weights : %s"%path.format(learningCount))
+
 quitFlag = False
 winlose = [0, 0, 0]
 model = BuildModel()
@@ -120,7 +143,7 @@ while not quitFlag:
         if cmd == "Q":
             w, r = OnQuit(buf)
             winlose[w] += 1
-            reward = w*0.5
+            reward = w
             for state, predict, p in episode[::-1]:
                 memory.append((state, predict, p, reward))
                 reward *= gamma
