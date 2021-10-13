@@ -14,29 +14,28 @@ gamma = 0.95
 epsilon = 1
 epsilon_min = 0.001
 epsilon_decay = 0.999
-batch_size = 32
+batch_size = 64
 
 # memory
-memory = deque([], maxlen=500)
+memory = deque([], maxlen=1000)
 learningCount = 0
 
 reads = { "S" : 1, "T" : 64, "Q" : 4, "A" : 0 }
 def recv(sock):
     buf = b""
     try:
-        while True:
-            cmd = sock.recv(1)
-            if cmd == None: return "E", "Network closed"
-            if len(cmd) == 1: break
-        cmd = cmd.decode("ascii")
-        if cmd not in reads:
-            return "E", f"Unknown command {cmd}"
-        while len(buf) < reads[cmd]:
+        cmd = sock.recv(1)
+        if cmd == None or len(cmd) == 0: return "E", "Network closed"
+    except socket.error: return "E", str(socket.error)
+    cmd = cmd.decode("ascii")
+    if cmd not in reads:
+        return "E", f"Unknown command {cmd}"
+    while len(buf) < reads[cmd]:
+        try:
             t = sock.recv(reads[cmd]-len(buf))
-            if t == None: return "E", "Network closed"
-            buf += t
-    except socket.error:
-        return "E", "Socket error"
+            if t == None or len(t) == 0: return "E", "Network closed"
+        except socket.error: return "E", str(socket.error)
+        buf += t
     return cmd, buf.decode("ascii")
 
 def OnQuit(buf):
@@ -104,12 +103,14 @@ def Replay(model):
         if len(predict) != 64:
             print("Error in predict: %s"%predict)
             return
-        predict[action] = reward
+        for i in range(64):
+            predict[i] *= 1.5**(reward if i is action else -reward)
+            predict[i] = max(2.0, predict[i])
         y.append(predict)
     xarray = np.array(x)
     yarray = np.array(y)
 
-    model.fit(xarray, yarray, epochs=10)
+    model.fit(xarray, yarray)
 
     # save checkpoint
     path = "training/cp_{0:06}.ckpt"
@@ -123,9 +124,15 @@ model = BuildModel()
 
 while not quitFlag:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try: sock.connect(("127.0.0.1", 8888))
-    except socket.error: break
-    except socket.timeout: continue
+    try:
+        sock.connect(("127.0.0.1", 8888))
+    except socket.error:
+        print(f"Socket error {socket.error}")
+        break
+    except socket.timeout:
+        print("Socket timeout")
+        time.sleep(1.0)
+        continue
 
     cmd, buf = recv(sock)
     turn = int(buf[0])
@@ -138,12 +145,12 @@ while not quitFlag:
         if keyboard.is_pressed("q"): quitFlag = True
         cmd, buf = recv(sock)
         if cmd == "E":
-            print(f"Network Error!! {buf}")
+            print(f"Network Error!! : {buf}")
             break
         if cmd == "Q":
             w, r = OnQuit(buf)
             winlose[w] += 1
-            reward = w
+            reward = w-1
             for state, predict, p in episode[::-1]:
                 memory.append((state, predict, p, reward))
                 reward *= gamma
@@ -164,4 +171,4 @@ while not quitFlag:
     sock.close()
     time.sleep(1.0)
 
-print(f"Wins: {winlose[1]}, Loses: {winlose[0]}")
+print(f"Wins: {winlose[2]}, Loses: {winlose[0]}")
