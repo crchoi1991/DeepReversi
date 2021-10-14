@@ -82,3 +82,25 @@ bool Reversi::Place(int p)
 	return false;
 }
 
+bool Reversi::PreRun(int p, char *nextBoard)
+{
+	memcpy(nextBoard, board, sizeof(board));
+	static int dxy[8] = { -8, -7, 1, 9, 8, 7, -1, -9 };
+	if(nextBoard[p] != 0) return false;
+	nextBoard[p] = turn;
+	for(int dir = 0; dir < 8; dir++)
+	{
+		int cv = 0, antiturn = turn^3, rv = 0;
+		for(int i = 1; i <= limit[p][dir]; i++)
+		{
+			int np = p + dxy[dir]*i;
+			if(nextBoard[np] == turn) { rv = cv; break; }
+			if(nextBoard[np] != antiturn) break;
+			cv++;
+		}
+		if(rv == 0) continue;
+		for(int i = 1; i <= rv; i++) nextBoard[p+dxy[dir]*i] = turn;
+	}
+	for(int i = 0; i < 64; i++) if(nextBoard[i]==3) nextBoard[i]=0;
+	return true;
+}

@@ -136,7 +136,7 @@ int Recv(int slot, char buf[])
 	int cmd = 0;
 	if(recv(sockClient[slot], (char *)&cmd, 1, 0) <= 0) return 0;
 	int len = 0, reads = 0;
-	if(cmd == 'P') reads = 2;
+	if(cmd == 'P' || cmd == 'R') reads = 2;
 	else return 0;
 	while(len < reads)
 	{
@@ -154,6 +154,14 @@ void SendBoard(int slot)
 	const char *board = game.GetBoard();
 	for(int i = 0; i < RSIZE*RSIZE; i++) buf[i+1] = board[i]+'0';
 	send(sockClient[slot], buf, RSIZE*RSIZE+1, 0);
+}
+
+void SendPreRun(int slot, char newBoard[])
+{
+	char buf[512];
+	buf[0] = 'R';
+	for(int i = 0; i < 64; i++) buf[i+1] = newBoard[i]+'0';
+	send(sockClient[slot], buf, 65, 0);
 }
 
 void SendQuit()
@@ -246,12 +254,22 @@ void OnClient(HWND hWnd, int issue, int slot)
 	if(issue == FD_CLOSE) { OnClose(hWnd); return; }
 	char buf[1024];
 	int cmd = Recv(slot, buf);
-	if(cmd != 'P') { OnClose(hWnd); return; }
-	int place = buf[0]*10+buf[1]-'0'*11;
-	if(!game.Place(place)) { OnQuit(hWnd); return; }
-	int nextSlot = game.GetTurn() - 1;
-	if(players[nextSlot] == PLAYER_NETWORK) SendBoard(nextSlot);
-	InvalidateRect(hWnd, 0, FALSE);
+	if(cmd == 'P')
+	{
+		int place = buf[0]*10+buf[1]-'0'*11;
+		if(!game.Place(place)) { OnQuit(hWnd); return; }
+		int nextSlot = game.GetTurn() - 1;
+		if(players[nextSlot] == PLAYER_NETWORK) SendBoard(nextSlot);
+		InvalidateRect(hWnd, 0, FALSE);
+	}
+	else if(cmd == 'R')
+	{
+		int place = buf[0]*10+buf[1]-'0'*11;
+		char newBoard[64];
+		if(!game.PreRun(place, newBoard)) { OnQuit(hWnd); return; }
+		SendPreRun(slot, newBoard);
+	}
+	else OnClose(hWnd);
 }
 
 void OnLButtonDown(HWND hWnd, int x, int y)
