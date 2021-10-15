@@ -84,7 +84,7 @@ class Game:
         winText = ("You Lose!!", "Tie", "You Win!!")
         win = 1 if result == 0 else 2 if result > 0 else 0
         print(f"{winText[win]} W : {w}, B : {b}")
-        reward = result
+        reward = result + (win-1)*10
         for st, turn in self.episode[::-1]:
             self.memory.append((st, reward if turn==self.turn else -reward))
             reward *= self.gamma
@@ -144,12 +144,11 @@ class Game:
 
     def replay(self):
         if len(self.memory) < self.batch_size: return
-        minibatch = random.sample(self.memory, self.batch_size)
 
-        xarray = np.array([k[0] for k in minibatch])
-        yarray = np.array([k[1] for k in minibatch])
+        xarray = np.array([k[0] for k in self.memory])
+        yarray = np.array([k[1] for k in self.memory])
 
-        self.model.fit(xarray, yarray, epochs=5)
+        self.model.fit(xarray, yarray, epochs=10, batch_size=self.batch_size)
 
         # save checkpoint
         saveFile = Game.cpPath.format(self.gameCount)
@@ -174,6 +173,7 @@ while not quitFlag:
         if cmd == "Q":
             w, r = game.onQuit(buf)
             winlose[w] += 1
+            print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Ties: {winlose[1]}, {winlose[2]*100/(winlose[0]+winlose[1]+winlose[2]):.2f}%" )
             break
         if cmd == "A":
             print("Game Abort!!")
@@ -183,6 +183,5 @@ while not quitFlag:
             if not game.onTurn(buf): break
 
     game.close()
-    print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Ties: {winlose[1]}")
     time.sleep(1.0)
 
