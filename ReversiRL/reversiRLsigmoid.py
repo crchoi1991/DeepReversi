@@ -84,7 +84,7 @@ class Game:
         b = int(buf[2:])
         result = w-b if self.turn == 1 else b-w
         winText = ("You Lose!!", "Tie", "You Win!!")
-        win = (result == 0) + (result >= 0)
+        win = (result == 0) + (result > 0)*2
         print(f"{winText[win]} W : {w}, B : {b}")
         reward = [win/2, 1-win/2]
         for st, turn in self.episode[::-1]:
