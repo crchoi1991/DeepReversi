@@ -6,19 +6,19 @@ import tensorflow as tf
 from tensorflow import keras
 from collections import deque
 import os.path
+import os
 
 class Game:
-    cpPath = "training5/cp_{0:06}.ckpt"
+    cpPath = "training_s/cp_{0:06}.ckpt"
 
     def __init__(self):
         # parameters
-        self.alpha = 0.001
-        self.gamma = 0.95
+        self.alpha = 0.005
+        self.gamma = 0.9
         self.epsilon = 1
         self.epsilon_min = 0.001
         self.epsilon_decay = 0.999
         self.batch_size = 64
-        self.epochs = 5
 
         # memory
         self.memory = deque([], maxlen=1000)
@@ -31,12 +31,12 @@ class Game:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.sock.connect(("127.0.0.1", 8888))
-        except socket.error:
-            print(f"Socket error : {socket.error.errno}")
-            return False
         except socket.timeout:
             print("Socket timeout")
             time.sleep(1.0)
+        except socket.error as e:
+            print(f"Socket error : {e}")
+            return False
         return True
 
     def close(self):
@@ -47,16 +47,19 @@ class Game:
         buf = b""
         try:
             cmd = self.sock.recv(1)
-            if cmd == None or len(cmd) == 0: return "E", "Network closed"
-        except socket.error: return "E", str(socket.error)
+            if cmd == None: return "E", "None"
+            if len(cmd) == 0: return "E", "== 0"
+        except socket.error as e:
+            return "E", str(e)
         cmd = cmd.decode("ascii")
         if cmd not in reads:
             return "E", f"Unknown command {cmd}"
         while len(buf) < reads[cmd]:
             try:
                 t = self.sock.recv(reads[cmd]-len(buf))
-                if t == None or len(t) == 0: return "E", "Network closed"
-            except socket.error: return "E", str(socket.error)
+                if t == None or len(t) == 0: return "E", "None or == 0"
+            except socket.error as e:
+                return "E", str(e)
             buf += t
         return cmd, buf.decode("ascii")
 
@@ -85,7 +88,7 @@ class Game:
         winText = ("You Lose!!", "Tie", "You Win!!")
         win = 1 if result == 0 else 2 if result > 0 else 0
         print(f"{winText[win]} W : {w}, B : {b}")
-        reward = result + (win-1)*20
+        reward = result
         for st, turn in self.episode[::-1]:
             self.memory.append((st, reward if turn==self.turn else -reward))
             reward *= self.gamma
@@ -103,11 +106,7 @@ class Game:
 
     def buildModel(self):
         self.model = keras.Sequential([
-            keras.layers.Dense(128, input_dim = 64, activation="relu"),
-            keras.layers.Dense(128, activation="relu"),
-            keras.layers.Dense(128, activation="relu"),
-            keras.layers.Dense(128, activation="relu"),
-            keras.layers.Dense(1, activation="linear")
+            keras.layers.Dense(1, input_dim = 64, activation="linear")
         ])
         self.model.compile(loss="mean_squared_error",
             optimizer=keras.optimizers.Adam(learning_rate=self.alpha))
@@ -150,9 +149,7 @@ class Game:
         xarray = np.array([k[0] for k in self.memory])
         yarray = np.array([k[1] for k in self.memory])
 
-        self.model.fit(xarray, yarray,
-                       epochs=self.epochs,
-                       batch_size=self.batch_size)
+        self.model.fit(xarray, yarray, epochs=10, batch_size=self.batch_size)
 
         # save checkpoint
         saveFile = Game.cpPath.format(self.gameCount)
@@ -172,12 +169,12 @@ while not quitFlag:
     while True:
         cmd, buf = game.recv()
         if cmd == "E":
-            print(f"Network Error!! : {buf}")
+            print(f"Error : {buf}")
             break
         if cmd == "Q":
             w, r = game.onQuit(buf)
             winlose[w] += 1
-            print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Ties: {winlose[1]}, {winlose[2]*100/(winlose[0]+winlose[1]+winlose[2]):.2f}%" )
+            print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Ties: {winlose[1]}, {winlose[2]*100/(winlose[0]+winlose[1]+winlose[2]):.2f}%")
             break
         if cmd == "A":
             print("Game Abort!!")

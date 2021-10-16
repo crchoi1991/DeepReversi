@@ -4,16 +4,15 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from collections import deque
 import os.path
 
 class Game:
-    cpPath = "training5/cp_{0:06}.ckpt"
+    cpPath = "training_sigmoid/cp_{0:06}.ckpt"
 
     def __init__(self):
         # parameters
-        self.alpha = 0.001
-        self.gamma = 0.95
+        self.alpha = 0.01
+        self.gamma = 1.0
         self.epsilon = 1
         self.epsilon_min = 0.001
         self.epsilon_decay = 0.999
@@ -21,7 +20,9 @@ class Game:
         self.epochs = 5
 
         # memory
-        self.memory = deque([], maxlen=1000)
+        self.memsize = 1024
+        self.memory = [0]*self.memsize
+        self.memp = 0
         self.gameCount = 0
 
         # build model
@@ -83,12 +84,14 @@ class Game:
         b = int(buf[2:])
         result = w-b if self.turn == 1 else b-w
         winText = ("You Lose!!", "Tie", "You Win!!")
-        win = 1 if result == 0 else 2 if result > 0 else 0
+        win = (result == 0) + (result >= 0)
         print(f"{winText[win]} W : {w}, B : {b}")
-        reward = result + (win-1)*20
+        reward = [win/2, 1-win/2]
         for st, turn in self.episode[::-1]:
-            self.memory.append((st, reward if turn==self.turn else -reward))
-            reward *= self.gamma
+            self.memory[self.memp%self.memsize] = (st, reward[turn!=self.turn])
+            self.memp += 1
+            reward[0] *= self.gamma
+            reward[1] *= self.gamma
         self.replay()
         return win, result
 
@@ -105,9 +108,7 @@ class Game:
         self.model = keras.Sequential([
             keras.layers.Dense(128, input_dim = 64, activation="relu"),
             keras.layers.Dense(128, activation="relu"),
-            keras.layers.Dense(128, activation="relu"),
-            keras.layers.Dense(128, activation="relu"),
-            keras.layers.Dense(1, activation="linear")
+            keras.layers.Dense(1, activation="sigmoid")
         ])
         self.model.compile(loss="mean_squared_error",
             optimizer=keras.optimizers.Adam(learning_rate=self.alpha))
@@ -145,7 +146,7 @@ class Game:
         return st, maxnst, maxp
 
     def replay(self):
-        if len(self.memory) < self.batch_size: return
+        if self.memp < self.memsize: return
 
         xarray = np.array([k[0] for k in self.memory])
         yarray = np.array([k[1] for k in self.memory])
