@@ -18,6 +18,7 @@ class Game:
         self.epsilon_decay = 0.999
         self.batch_size = 64
         self.epochs = 5
+        self.sampleSize = 256
 
         # memory
         self.memsize = 1024
@@ -83,7 +84,7 @@ class Game:
         w = int(buf[:2])
         b = int(buf[2:])
         result = w-b if self.turn == 1 else b-w
-        winText = ("You Lose!!", "Tie", "You Win!!")
+        winText = ("You Lose!!", "Draw", "You Win!!")
         win = (result == 0) + (result > 0)*2
         print(f"{winText[win]} W : {w}, B : {b}")
         reward = [win/2, 1-win/2]
@@ -106,7 +107,7 @@ class Game:
 
     def buildModel(self):
         self.model = keras.Sequential([
-            keras.layers.Dense(128, input_dim = 64, activation="relu"),
+            keras.layers.Dense(128, input_dim = 64, activation="sigmoid"),
             keras.layers.Dense(128, activation="relu"),
             keras.layers.Dense(1, activation="sigmoid")
         ])
@@ -148,8 +149,9 @@ class Game:
     def replay(self):
         if self.memp < self.memsize: return
 
-        xarray = np.array([k[0] for k in self.memory])
-        yarray = np.array([k[1] for k in self.memory])
+        sample = random.sample(self.memory, self.sampleSize)
+        xarray = np.array([k[0] for k in sample])
+        yarray = np.array([k[1] for k in sample])
 
         self.model.fit(xarray, yarray,
                        epochs=self.epochs,
@@ -178,7 +180,7 @@ while not quitFlag:
         if cmd == "Q":
             w, r = game.onQuit(buf)
             winlose[w] += 1
-            print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Ties: {winlose[1]}, {winlose[2]*100/(winlose[0]+winlose[1]+winlose[2]):.2f}%" )
+            print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Draws: {winlose[1]}, {winlose[2]*100/(winlose[0]+winlose[1]+winlose[2]):.2f}%" )
             break
         if cmd == "A":
             print("Game Abort!!")
