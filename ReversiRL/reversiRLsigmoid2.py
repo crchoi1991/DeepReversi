@@ -7,7 +7,7 @@ from tensorflow import keras
 import os.path
 
 class Game:
-    cpPath = "training_sigmoid/cp_{0:06}.ckpt"
+    cpPath = "training_sigmoid2/cp_{0:06}.ckpt"
 
     def __init__(self):
         # parameters
@@ -21,7 +21,7 @@ class Game:
         self.sampleSize = 512
 
         # memory
-        self.memsize = 2048
+        self.memsize = 4096
         self.memory = [0]*self.memsize
         self.memp = 0
         self.gameCount = 0
@@ -107,8 +107,9 @@ class Game:
 
     def buildModel(self):
         self.model = keras.Sequential([
-            keras.layers.Dense(128, input_dim = 64, activation="sigmoid"),
+            keras.layers.Dense(256, input_dim = 64, activation="sigmoid"),
             keras.layers.Dense(128, activation="relu"),
+            keras.layers.Dense(64, activation="relu"),
             keras.layers.Dense(1, activation="sigmoid")
         ])
         self.model.compile(loss="mean_squared_error",

@@ -7,7 +7,7 @@ from tensorflow import keras
 import os.path
 
 class Game:
-    cpPath = "training_sigmoid/cp_{0:06}.ckpt"
+    cpPath = "training_sigmoid3/cp_{0:06}.ckpt"
 
     def __init__(self):
         # parameters
@@ -21,8 +21,8 @@ class Game:
         self.sampleSize = 512
 
         # memory
-        self.memsize = 2048
-        self.memory = [0]*self.memsize
+        self.memSize = 4096
+        self.memory = [None]*self.memSize
         self.memp = 0
         self.gameCount = 0
 
@@ -89,7 +89,9 @@ class Game:
         print(f"{winText[win]} W : {w}, B : {b}")
         reward = [win/2, 1-win/2]
         for st, turn in self.episode[::-1]:
-            self.memory[self.memp%self.memsize] = (st, reward[turn!=self.turn])
+            rw = reward[turn!=self.turn]
+            if rw <= 0.5 and np.random.rand() < 0.5: continue
+            self.memory[self.memp%self.memSize] = (st, rw)
             self.memp += 1
             reward[0] *= self.gamma
             reward[1] *= self.gamma
@@ -107,8 +109,9 @@ class Game:
 
     def buildModel(self):
         self.model = keras.Sequential([
-            keras.layers.Dense(128, input_dim = 64, activation="sigmoid"),
+            keras.layers.Dense(256, input_dim = 64, activation="sigmoid"),
             keras.layers.Dense(128, activation="relu"),
+            keras.layers.Dense(64, activation="relu"),
             keras.layers.Dense(1, activation="sigmoid")
         ])
         self.model.compile(loss="mean_squared_error",
@@ -147,9 +150,12 @@ class Game:
         return st, maxnst, maxp
 
     def replay(self):
-        if self.memp < self.memsize: return
+        if self.memp < self.sampleSize: return
 
-        sample = random.sample(self.memory, self.sampleSize)
+        if self.memp < self.memSize:
+            sample = random.sample(self.memory[:self.memp], self.sampleSize)
+        else:
+            sample = random.sample(self.memory, self.sampleSize)
         xarray = np.array([k[0] for k in sample])
         yarray = np.array([k[1] for k in sample])
 
