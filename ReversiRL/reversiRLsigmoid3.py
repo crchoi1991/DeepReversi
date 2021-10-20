@@ -170,11 +170,10 @@ class Game:
 
         if self.epsilon > self.epsilon_min: self.epsilon *= self.epsilon_decay
 
-quitFlag = False
 winlose = [0, 0, 0]
 game = Game()
 
-while not quitFlag:
+while True:
     if not game.connect(): break
 
     episode = []
