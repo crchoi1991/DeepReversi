@@ -7,7 +7,7 @@ from tensorflow import keras
 import os.path
 
 class Game:
-    cpPath = "training_sigmoid3/cp_{0:06}.ckpt"
+    cpPath = "training_sigmoid4/cp_{0:06}.ckpt"
 
     def __init__(self):
         # parameters
@@ -16,12 +16,12 @@ class Game:
         self.epsilon = 1
         self.epsilon_min = 0.001
         self.epsilon_decay = 0.999
-        self.batch_size = 64
+        self.batch_size = 32
         self.epochs = 5
         self.sampleSize = 512
 
         # memory
-        self.memSize = 4096
+        self.memSize = 8192
         self.memory = [None]*self.memSize
         self.memp = 0
         self.gameCount = 0
@@ -90,7 +90,7 @@ class Game:
         reward = [win/2, 1-win/2]
         for st, turn in self.episode[::-1]:
             rw = reward[turn!=self.turn]
-            if rw <= 0.5 and np.random.rand() < 0.5: continue
+            if rw <= 0.5 and np.random.rand() < 0.3: continue
             self.memory[self.memp%self.memSize] = (st, rw)
             self.memp += 1
             reward[0] *= self.gamma
@@ -112,6 +112,7 @@ class Game:
             keras.layers.Dense(256, input_dim = 64, activation="sigmoid"),
             keras.layers.Dense(128, activation="relu"),
             keras.layers.Dense(64, activation="relu"),
+            keras.layers.Dense(32, activation="relu"),
             keras.layers.Dense(1, activation="sigmoid")
         ])
         self.model.compile(loss="mean_squared_error",
@@ -170,10 +171,11 @@ class Game:
 
         if self.epsilon > self.epsilon_min: self.epsilon *= self.epsilon_decay
 
+quitFlag = False
 winlose = [0, 0, 0]
 game = Game()
 
-while True:
+while not quitFlag:
     if not game.connect(): break
 
     episode = []
