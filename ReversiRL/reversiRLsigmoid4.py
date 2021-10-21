@@ -16,7 +16,7 @@ class Game:
         self.epsilon = 1
         self.epsilon_min = 0.001
         self.epsilon_decay = 0.999
-        self.batch_size = 32
+        self.batch_size = 64
         self.epochs = 5
         self.sampleSize = 512
 
@@ -109,10 +109,8 @@ class Game:
 
     def buildModel(self):
         self.model = keras.Sequential([
-            keras.layers.Dense(256, input_dim = 64, activation="sigmoid"),
-            keras.layers.Dense(128, activation="relu"),
-            keras.layers.Dense(64, activation="relu"),
-            keras.layers.Dense(32, activation="relu"),
+            keras.layers.Dense(512, input_dim = 64, activation="sigmoid"),
+            keras.layers.Dense(128, activation="sigmoid"),
             keras.layers.Dense(1, activation="sigmoid")
         ])
         self.model.compile(loss="mean_squared_error",
