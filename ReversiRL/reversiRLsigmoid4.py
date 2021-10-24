@@ -84,7 +84,7 @@ class Game:
         w = int(buf[:2])
         b = int(buf[2:])
         result = w-b if self.turn == 1 else b-w
-        winText = ("You Lose!!", "Draw", "You Win!!")
+        winText = ("Lose", "Draw", "Win")
         win = (result == 0) + (result > 0)*2
         print(f"{winText[win]} W : {w}, B : {b}")
         reward = [win/2, 1-win/2]
@@ -104,7 +104,7 @@ class Game:
         self.send("P%02d"%p)
         self.episode.append((st, self.turn^3))
         self.episode.append((nst, self.turn))
-        print("Place (%d, %d)"%(p/8, p%8))
+        print("(%d, %d)"%(p/8, p%8), end="")
         return True
 
     def buildModel(self):
