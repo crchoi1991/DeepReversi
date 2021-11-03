@@ -149,7 +149,7 @@ class Game:
         for h in hints:
             ret, nst = self.preRun(h)
             if not ret: return None, None, -1
-            v = self.model.predict(nst.reshape(1, 64))
+            v = self.model.predict(nst.reshape(1, 64))[0, 0]
             if v > maxv: maxp, maxnst, maxv = h, nst, v
         return st, maxnst, maxp
 

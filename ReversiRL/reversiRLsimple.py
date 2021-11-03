@@ -4,78 +4,62 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from collections import deque
 import os.path
-import os
 
 class Game:
-    cpPath = "training_s/cp_{0:06}.ckpt"
-
     def __init__(self):
-        # parameters
-        self.alpha = 0.005
-        self.gamma = 0.9
-        self.epsilon = 1
-        self.epsilon_min = 0.001
-        self.epsilon_decay = 0.999
-        self.batch_size = 64
-
-        # memory
-        self.memory = deque([], maxlen=1000)
         self.gameCount = 0
-
         # build model
         self.buildModel()
 
     def connect(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.sock.connect(("127.0.0.1", 8888))
+            self.sock.connect(("127.0.0.1", 8791))
+        except socket.error:
+            print(f"Socket error : {socket.error.errno}")
+            return False
         except socket.timeout:
             print("Socket timeout")
             time.sleep(1.0)
-        except socket.error as e:
-            print(f"Socket error : {e}")
-            return False
         return True
 
     def close(self):
         self.sock.close()
 
     def recv(self):
-        reads = { "S" : 1, "T" : 64, "Q" : 4, "A" : 0, "R" : 64 }
         buf = b""
-        try:
-            cmd = self.sock.recv(1)
-            if cmd == None: return "E", "None"
-            if len(cmd) == 0: return "E", "== 0"
-        except socket.error as e:
-            return "E", str(e)
-        cmd = cmd.decode("ascii")
-        if cmd not in reads:
-            return "E", f"Unknown command {cmd}"
-        while len(buf) < reads[cmd]:
+        while len(buf) < 4:
             try:
-                t = self.sock.recv(reads[cmd]-len(buf))
-                if t == None or len(t) == 0: return "E", "None or == 0"
-            except socket.error as e:
-                return "E", str(e)
+                t = self.sock.recv(4-len(buf))
+                if t == None or len(t) == 0: return "et", "Network closed"
+            except socket.error: return "et", str(socket.error)
             buf += t
-        return cmd, buf.decode("ascii")
+        needed = int(buf.decode("ascii"))
+        buf = b""
+        while len(buf) < needed:
+            try:
+                t = self.sock.recv(needed-len(buf))
+                if t == None or len(t) == 0: return "et", "Network closed"
+            except socket.error: return "et", str(socket.error)
+            buf += t
+        ss = buf.decode("ascii").split()
+        if ss[0] == "ab": return "ab", "abort"
+        return ss[0], ss[1]
 
     def send(self, buf):
         self.sock.send(buf.encode("ascii"))
 
     def preRun(self, p):
-        self.send("R%02d"%p)
+        self.send("%04d pr %4d"%(8, p))
         cmd, buf = self.recv()
-        if cmd != "R": return False, None
+        if cmd != "pr": return False, None
         ref = (0.0, (self.turn==1)*2-1.0, (self.turn==2)*2-1.0, 0.0)
         st = np.array([ref[int(buf[i])] for i in range(64)])
         return True, st
 
     def onStart(self, buf):
-        self.turn = int(buf[0])
+        self.turn = int(buf)
         self.episode = []
         colors = ( "", "White", "Black" )
         print(f"Game {self.gameCount+1} {colors[self.turn]}")
@@ -85,78 +69,44 @@ class Game:
         w = int(buf[:2])
         b = int(buf[2:])
         result = w-b if self.turn == 1 else b-w
-        winText = ("You Lose!!", "Tie", "You Win!!")
-        win = 1 if result == 0 else 2 if result > 0 else 0
+        winText = ("Lose", "Draw", "Win")
+        win = (result == 0) + (result > 0)*2
         print(f"{winText[win]} W : {w}, B : {b}")
-        reward = result
-        for st, turn in self.episode[::-1]:
-            self.memory.append((st, reward if turn==self.turn else -reward))
-            reward *= self.gamma
-        self.replay()
         return win, result
 
-    def onTurn(self, buf):
+    def onBoard(self, buf):
         st, nst, p = self.action(buf)
         if p < 0: return False
-        self.send("P%02d"%p)
+        self.send("%04d pt %4d"%(8, p))
         self.episode.append((st, self.turn^3))
         self.episode.append((nst, self.turn))
-        print("Place (%d, %d)"%(p/8, p%8))
+        print("(%d, %d)"%(p/8, p%8), end="")
         return True
 
     def buildModel(self):
         self.model = keras.Sequential([
-            keras.layers.Dense(1, input_dim = 64, activation="linear")
+            keras.layers.Dense(1, input_dim=64, activation="linear"),
         ])
         self.model.compile(loss="mean_squared_error",
-            optimizer=keras.optimizers.Adam(learning_rate=self.alpha))
-
-        # Load weights
-        dir = os.path.dirname(Game.cpPath)
-        latest = tf.train.latest_checkpoint(dir)
-        if not latest: return
-        print(f"Load weights {latest}")
-        self.model.load_weights(latest)
-        idx = latest.find("cp_")
-        self.gameCount = int(latest[idx+3:idx+9])
-        self.epsilon *= self.epsilon_decay**self.gameCount
-        if self.epsilon < self.epsilon_min: self.epsilon = self.epsilon_min
-
+            optimizer=keras.optimizers.Adam())
+        print(self.model.layers[0].get_weights()[0].shape)
+        w = np.ones((64, 1))
+        b = np.zeros(1)
+        self.model.layers[0].set_weights([w.reshape(64, 1), b])
+    
     def action(self, board):
         hints = [i for i in range(64) if board[i] == "0"]
         ref = (0.0, (self.turn==2)*2-1.0, (self.turn==1)*2-1.0, 0.0)
         st = np.array([ref[int(board[i])] for i in range(64)])
 
-        # if prbability is below epsilon, choose random place
-        if np.random.rand() <= self.epsilon:
-            r = hints[random.randrange(len(hints))]
-            ret, nst = self.preRun(r)
-            if not ret: return None, None, -1
-            return st, nst, r
-
         # choose max value's hint place
-        maxp, maxnst, maxv = -1, None, -10000
+        maxp, maxnst, maxv = -1000, None, -10000
         for h in hints:
             ret, nst = self.preRun(h)
             if not ret: return None, None, -1
             v = self.model.predict(nst.reshape(1, 64))
-            if v > maxv: maxp, maxnst, maxv = h, nst, v
+            if v[0,0] > maxv: maxp, maxnst, maxv = h, nst, v[0,0]
         return st, maxnst, maxp
-
-    def replay(self):
-        if len(self.memory) < self.batch_size: return
-
-        xarray = np.array([k[0] for k in self.memory])
-        yarray = np.array([k[1] for k in self.memory])
-
-        self.model.fit(xarray, yarray, epochs=10, batch_size=self.batch_size)
-
-        # save checkpoint
-        saveFile = Game.cpPath.format(self.gameCount)
-        self.model.save_weights(saveFile)
-        print(f"Save weights : {saveFile}")
-
-        if self.epsilon > self.epsilon_min: self.epsilon *= self.epsilon_decay
 
 quitFlag = False
 winlose = [0, 0, 0]
@@ -168,20 +118,21 @@ while not quitFlag:
     episode = []
     while True:
         cmd, buf = game.recv()
-        if cmd == "E":
-            print(f"Error : {buf}")
+        if cmd == "et":
+            print(f"Network Error!! : {buf}")
             break
-        if cmd == "Q":
+        if cmd == "qt":
             w, r = game.onQuit(buf)
             winlose[w] += 1
-            print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Ties: {winlose[1]}, {winlose[2]*100/(winlose[0]+winlose[1]+winlose[2]):.2f}%")
+            print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Draws: {winlose[1]}, {winlose[2]*100/(winlose[0]+winlose[1]+winlose[2]):.2f}%" )
             break
-        if cmd == "A":
+        if cmd == "ab":
             print("Game Abort!!")
             break
-        if cmd == "S": game.onStart(buf)
-        elif cmd == "T":
-            if not game.onTurn(buf): break
+        if cmd == "st":
+            game.onStart(buf)
+        elif cmd == "bd":
+            if not game.onBoard(buf): break
 
     game.close()
     time.sleep(1.0)
