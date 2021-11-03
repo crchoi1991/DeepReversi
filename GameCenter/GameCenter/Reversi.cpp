@@ -30,10 +30,10 @@ void Reversi::Start()
 	turn = 1;
 }
 
-bool Reversi::Place(int p)
+int Reversi::Place(int p)
 {
 	static int dxy[8] = { -8, -7, 1, 9, 8, 7, -1, -9 };
-	if(board[p] != 0) return false;
+	if(board[p] != 0) return -1;
 	board[p] = turn;
 	for(int dir = 0; dir < 8; dir++)
 	{
@@ -76,10 +76,10 @@ bool Reversi::Place(int p)
 			}
 		}
 		scores[0] = 64 - scores[1] - scores[2];
-		if(hints) return true;
-		if(!scores[0]) return false;
+		if(hints) return 1;
+		if(!scores[0]) return 0;
 	}
-	return false;
+	return 0;
 }
 
 bool Reversi::PreRun(int p, char *nextBoard)

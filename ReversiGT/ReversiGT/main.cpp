@@ -86,21 +86,25 @@ void PutBoard(Gameboard &board, int index, int turn);
 
 int Game::Recv(SOCKET sock, char buf[])
 {
-	int cmd = 0, reads = 0;
-	if(recv(sock, (char *)&cmd, 1, 0) <= 0) return false;
-	if(cmd == 'S') reads = 1;
-	else if(cmd == 'T') reads = 64;
-	else if(cmd == 'Q') reads = 4;
-	else if(cmd == 'A') return cmd;
-	else return 0;
 	int len = 0;
-	while(len < reads)
+	while(len < 4)
 	{
-		int c = recv(sock, buf+len, reads-len, 0);
-		if(c <= 0) return false;
-		len += c;
+		int r = recv(sock, buf+len, 4-len, 0);
+		if(r <= 0) return 0;
+		len += r;
 	}
-	return cmd;
+	buf[len] = 0;
+	int needed = atoi(buf);
+	len = 0;
+	while(len < needed)
+	{
+		int r = recv(sock, buf+len, needed-len, 0);
+		if(r <= 0) return 0;
+		len += r;
+	}
+	buf[len] = 0;
+	printf("Recv : %s", buf);
+	return len;
 }
 
 bool Game::Ready()
@@ -110,13 +114,13 @@ bool Game::Ready()
 	SOCKADDR_IN addr;
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	addr.sin_port = htons(8888);
+	addr.sin_port = htons(8791);
 	if( connect(sock, (SOCKADDR *)&addr, sizeof(addr)) != 0 ) return false;
 
-	char buf[4];
-	if(Recv(sock, buf) != 'S') return false;
+	char buf[128];
+	if(Recv(sock, buf) == 0) return false;
 
-	turnColor = buf[0]-'0';
+	turnColor = atoi(buf+4);
 	printf("turn color : %s\n", turnColor==1?"White":"Black");
 	scores[0] = 60; scores[1] = 2; scores[2] = 2;
 
@@ -132,19 +136,21 @@ void Game::Close()
 bool Game::RunTurn()
 {
 	char buf[512];
-	int cmd = Recv(sock, buf);
-	if(cmd == 'Q')
+	int len = Recv(sock, buf);
+	if(len == 0) return false;
+	char cmd[4];
+	sscanf(buf, "%s", cmd);
+	if(cmd[0] == 'q')
 	{
 		printf("End of Game White: %d, Black: %d\n", buf[0]*10+buf[1]-'0'*11, buf[2]*10+buf[1]-'0'*11);
 		return false;
 	}
-	if(cmd == 'A')
+	if(cmd[0] == 'a')
 	{
 		printf("Game Abort\n");
 		return false;
 	}
-	if(cmd == 0) return false;
-	if(cmd != 'T')
+	if(cmd[0] != 'b')
 	{
 		printf("Unknown Command\n");
 		return false;
@@ -153,18 +159,18 @@ bool Game::RunTurn()
 	hint = 0;
 	for(int i = 0; i < 64; i++)
 	{
-		board[i] = buf[i]-'0';
-		if(buf[i] == '0') { scores[0]++; hints[hint++] = i; }
-		else if(buf[i] == '3') scores[0]++;
-		else scores[buf[i]-'0']++;
+		board[i] = buf[i+4]-'0';
+		if(buf[i+4] == '0') { scores[0]++; hints[hint++] = i; }
+		else if(buf[i+4] == '3') scores[0]++;
+		else scores[buf[i+4]-'0']++;
 	}
 	int depth, method;
 	if(scores[0] > 50) depth = LEVEL_HARD, method = USE_SCOREBOARD;
 	else if(scores[0] > LEVEL_HARD+4) depth = LEVEL_HARD+2, method = USE_SCOREBOARD;
 	else depth = scores[0], method = USE_PURE;
 	int choice = GetOptimal(depth, method);
-	sprintf(buf, "P%02d", choice);
-	send(sock, buf, 3, 0);
+	sprintf(buf, "%04d pt %4d", 8, choice);
+	send(sock, buf, 12, 0);
 	printf("Turn White: %d, Black: %d, Place: %d\n", scores[1], scores[2], choice);
 	return true;
 }

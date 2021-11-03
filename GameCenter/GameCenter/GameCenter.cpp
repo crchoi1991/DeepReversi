@@ -59,7 +59,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	SOCKADDR_IN addr;
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	addr.sin_port = htons(8888);
+	addr.sin_port = htons(8791);
 	bind(hListen, (SOCKADDR*)&addr, sizeof(addr));
 
 	listen(hListen, 2);
@@ -133,46 +133,53 @@ int GetPlayer(int player)
 
 int Recv(int slot, char buf[])
 {
-	int cmd = 0;
-	if(recv(sockClient[slot], (char *)&cmd, 1, 0) <= 0) return 0;
-	int len = 0, reads = 0;
-	if(cmd == 'P' || cmd == 'R') reads = 2;
-	else return 0;
-	while(len < reads)
+	int len = 0;
+	while(len < 4)
 	{
-		int c = recv(sockClient[slot], buf+len, reads-len, 0);
-		if(c <= 0) return 0;
-		len += c;
+		int r = recv(sockClient[slot], buf+len, 4-len, 0);
+		if(r <= 0) return 0;
+		len += r;
 	}
-	return cmd;
+	buf[len] = 0;
+	int needed = atoi(buf);
+	len = 0;
+	while(len < needed)
+	{
+		int r = recv(sockClient[slot], buf+len, needed-len, 0);
+		if(r <= 0) return 0;
+		len += r;
+	}
+	buf[len] = 0;
+	OutputDebugStringA(buf);
+	return len;
 }
 
 void SendBoard(int slot)
 {
 	char buf[512];
-	buf[0] = 'T';
 	const char *board = game.GetBoard();
-	for(int i = 0; i < RSIZE*RSIZE; i++) buf[i+1] = board[i]+'0';
-	send(sockClient[slot], buf, RSIZE*RSIZE+1, 0);
+	sprintf(buf, "%04d bd ", RSIZE*RSIZE+4);
+	for(int i = 0; i < RSIZE*RSIZE; i++) buf[i+8] = board[i]+'0';
+	send(sockClient[slot], buf, RSIZE*RSIZE+8, 0);
 }
 
 void SendPreRun(int slot, char newBoard[])
 {
 	char buf[512];
-	buf[0] = 'R';
-	for(int i = 0; i < 64; i++) buf[i+1] = newBoard[i]+'0';
-	send(sockClient[slot], buf, 65, 0);
+	sprintf(buf, "%04d pr ", RSIZE*RSIZE+4);
+	for(int i = 0; i < 64; i++) buf[i+8] = newBoard[i]+'0';
+	send(sockClient[slot], buf, RSIZE*RSIZE+8, 0);
 }
 
 void SendQuit()
 {
 	char buf[128];
-	sprintf(buf, "Q%02d%02d", game.GetScores()[1], game.GetScores()[2]);
+	sprintf(buf, "%04d qt %02d%02d", 8, game.GetScores()[1], game.GetScores()[2]);
 	for(int i = 0; i < 2; i++)
 	{
 		if(players[i] == PLAYER_NETWORK)
 		{
-			send(sockClient[i], buf, 5, 0);
+			send(sockClient[i], buf, 12, 0);
 			players[i] = PLAYER_WAITCLOSE;
 		}
 		else players[i] = PLAYER_NOTASSIGN;
@@ -181,10 +188,12 @@ void SendQuit()
 
 void SendAbort()
 {
+	char buf[128];
+	sprintf(buf, "%04d ab ", 4);
 	for(int slot = 0; slot < 2; slot++)
 	{
 		if(sockClient[slot] != INVALID_SOCKET)
-			send(sockClient[slot], "A", 1, 0);
+			send(sockClient[slot], buf, 8, 0);
 	}
 }
 
@@ -241,8 +250,8 @@ void OnAccept(HWND hWnd)
 	sockClient[cand] = accept(hListen, (SOCKADDR*)&addr, &len);
 	WSAAsyncSelect(sockClient[cand], hWnd, WM_CLIENT+cand, FD_READ | FD_CLOSE);
 	char packet[16];
-	sprintf(packet, "S%d", cand+1);
-	send(sockClient[cand], packet, 2, 0);
+	sprintf(packet, "%04d st %4d", 8, cand+1);
+	send(sockClient[cand], packet, 12, 0);
 
 	StartGame(hWnd);
 	InvalidateRect(hWnd, 0, FALSE);
@@ -253,20 +262,24 @@ void OnClient(HWND hWnd, int issue, int slot)
 	if(sockClient[slot] == INVALID_SOCKET) return;
 	if(issue == FD_CLOSE) { OnClose(hWnd); return; }
 	char buf[1024];
-	int cmd = Recv(slot, buf);
-	if(cmd == 'P')
+	int len = Recv(slot, buf);
+	char cmd[4];
+	sscanf(buf, "%s", cmd);
+	if(cmd[0] == 'p' && cmd[1] == 't')
 	{
-		int place = buf[0]*10+buf[1]-'0'*11;
-		if(!game.Place(place)) { OnQuit(hWnd); return; }
+		int place = atoi(buf+4);
+		int ret = game.Place(place);
+		if(ret == -1) { SendAbort(); return; }
+		if(ret == 0) { OnQuit(hWnd); return; }
 		int nextSlot = game.GetTurn() - 1;
 		if(players[nextSlot] == PLAYER_NETWORK) SendBoard(nextSlot);
 		InvalidateRect(hWnd, 0, FALSE);
 	}
-	else if(cmd == 'R')
+	else if(cmd[0] == 'p' && cmd[1] == 'r')
 	{
-		int place = buf[0]*10+buf[1]-'0'*11;
+		int place = atoi(buf+4);
 		char newBoard[64];
-		if(!game.PreRun(place, newBoard)) { OnQuit(hWnd); return; }
+		if(!game.PreRun(place, newBoard)) { SendAbort(); return; }
 		SendPreRun(slot, newBoard);
 	}
 	else OnClose(hWnd);

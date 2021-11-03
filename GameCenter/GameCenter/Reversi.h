@@ -11,7 +11,7 @@ public:
 	void SetPlayer(int idx, int p) { players[idx] = p; }
 	const char *GetBoard() const { return board; }
 	const int *GetScores() const { return scores; }
-	bool Place(int p);
+	int Place(int p);
 	bool PreRun(int p, char *nextBoard);
 
 private:
