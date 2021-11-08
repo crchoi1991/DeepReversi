@@ -11,7 +11,7 @@ class Game:
 
     def __init__(self):
         # parameters
-        self.alpha = 0.0001
+        self.alpha = 0.01
         self.gamma = 0.995
         self.epsilon = 1
         self.epsilon_min = 0.001
@@ -89,22 +89,21 @@ class Game:
         result = win+1 if self.turn == 1 else 1-win
         winText = ("Lose", "Draw", "Win")
         print(f"{winText[result]} W : {w}, B : {b}")
-        reward = result
-        for st in self.episode[::-1]:
-            self.memory[self.memp%self.memSize] = (st, reward/2)
+        reward = result/2
+        self.episode[-1] = (self.episode[-1][0], reward)
+        for st, v in self.episode[::-1]:
+            rw = (1-self.alpha)*v + self.alpha*reward
+            self.memory[self.memp%self.memSize] = (st, rw)
             self.memp += 1
-            self.memory[self.memp%self.memSize] = (-st, 1-reward/2)
-            self.memp += 1
-            reward *= self.gamma
+            reward = self.gamma*rw
         self.replay()
         return result
 
     def onBoard(self, buf):
-        st, nst, p = self.action(buf)
+        nst, p, v = self.action(buf)
         if p < 0: return False
         self.send("%04d pt %4d"%(8, p))
-        self.episode.append(st)
-        self.episode.append(nst)
+        self.episode.append((nst, v))
         print("(%d, %d)"%(p/8, p%8), end="")
         return True
 
@@ -117,7 +116,7 @@ class Game:
             keras.layers.Dense(1, activation="sigmoid")
         ])
         self.model.compile(loss="mean_squared_error",
-            optimizer=keras.optimizers.Adam(learning_rate=self.alpha))
+            optimizer=keras.optimizers.Adam(learning_rate=0.01))
 
         # Load weights
         dir = os.path.dirname(Game.cpPath)
@@ -139,8 +138,8 @@ class Game:
         if np.random.rand() <= self.epsilon:
             r = random.choice(hints)
             ret, nst = self.preRun(r)
-            if not ret: return None, None, -1
-            return st, nst, r
+            if not ret: return None, -1, 0
+            return nst, r, ret
 
         # choose max value's hint place
         maxp, maxnst, maxv = -1, None, -10000
@@ -149,7 +148,7 @@ class Game:
             if not ret: return None, None, -1
             v = self.model.predict(nst.reshape(1, 64))[0, 0]
             if v > maxv: maxp, maxnst, maxv = h, nst, v
-        return st, maxnst, maxp
+        return maxnst, maxp, maxv
 
     def replay(self):
         if self.memp < self.sampleSize: return
