@@ -66,13 +66,12 @@ class Game:
 
     def onQuit(self, buf):
         self.gameCount += 1
-        w = int(buf[:2])
-        b = int(buf[2:])
-        result = w-b if self.turn == 1 else b-w
+        w, b = int(buf[:2]), int(buf[2:])
+        win = (w > b) - (w < b)
+        reward = win+1 if self.turn == 1 else 1-win
         winText = ("Lose", "Draw", "Win")
-        win = (result == 0) + (result > 0)*2
-        print(f"{winText[win]} W : {w}, B : {b}")
-        return win, result
+        print(f"{winText[reward]} W : {w}, B : {b}")
+        return reward
 
     def onBoard(self, buf):
         st, nst, p = self.action(buf)
@@ -96,7 +95,7 @@ class Game:
     
     def action(self, board):
         hints = [i for i in range(64) if board[i] == "0"]
-        ref = (0.0, (self.turn==2)*2-1.0, (self.turn==1)*2-1.0, 0.0)
+        ref = (0.0, (self.turn==1)*2-1.0, (self.turn==0)*2-1.0, 0.0)
         st = np.array([ref[int(board[i])] for i in range(64)])
 
         # choose max value's hint place
@@ -122,7 +121,7 @@ while not quitFlag:
             print(f"Network Error!! : {buf}")
             break
         if cmd == "qt":
-            w, r = game.onQuit(buf)
+            w = game.onQuit(buf)
             winlose[w] += 1
             print(f"Wins: {winlose[2]}, Loses: {winlose[0]}, Draws: {winlose[1]}, {winlose[2]*100/(winlose[0]+winlose[1]+winlose[2]):.2f}%" )
             break

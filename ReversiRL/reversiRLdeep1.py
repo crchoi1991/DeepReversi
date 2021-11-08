@@ -7,12 +7,12 @@ from tensorflow import keras
 import os.path
 
 class Game:
-    cpPath = "training_deep/cp_{0:06}.ckpt"
+    cpPath = "training_deep1/cp_{0:06}.ckpt"
 
     def __init__(self):
         # parameters
         self.alpha = 0.0001
-        self.gamma = 1.0
+        self.gamma = 0.99
         self.epsilon = 1
         self.epsilon_min = 0.001
         self.epsilon_decay = 0.999
@@ -86,16 +86,18 @@ class Game:
         self.gameCount += 1
         w, b = int(buf[:2]), int(buf[2:])
         win = (w > b) - (w < b)
-        reward = win+1 if self.turn == 1 else 1-win
+        result = win+1 if self.turn == 1 else 1-win
         winText = ("Lose", "Draw", "Win")
-        print(f"{winText[reward]} W : {w}, B : {b}")
-        for st in self.episode:
+        print(f"{winText[result]} W : {w}, B : {b}")
+        reward = result
+        for st in self.episode[::-1]:
             self.memory[self.memp%self.memSize] = (st, reward/2)
             self.memp += 1
             self.memory[self.memp%self.memSize] = (-st, 1-reward/2)
             self.memp += 1
+            reward *= self.gamma
         self.replay()
-        return reward
+        return result
 
     def onBoard(self, buf):
         st, nst, p = self.action(buf)
@@ -108,9 +110,8 @@ class Game:
 
     def buildModel(self):
         self.model = keras.Sequential([
-            keras.layers.Dense(512, input_dim=64, activation="sigmoid"),
+            keras.layers.Dense(1024, input_dim=64, activation="sigmoid"),
             keras.layers.Dense(256, activation="relu"),
-            keras.layers.Dense(128, activation="relu"),
             keras.layers.Dense(64, activation="relu"),
             keras.layers.Dense(1, activation="sigmoid")
         ])
@@ -135,7 +136,7 @@ class Game:
 
         # if prbability is below epsilon, choose random place
         if np.random.rand() <= self.epsilon:
-            r = hints[random.randrange(len(hints))]
+            r = random.choice(hints)
             ret, nst = self.preRun(r)
             if not ret: return None, None, -1
             return st, nst, r
