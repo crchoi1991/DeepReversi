@@ -11,20 +11,15 @@ class Game:
 
     def __init__(self):
         # parameters
-        self.alpha = 0.01
+        self.alpha = 0.1
         self.gamma = 0.995
         self.epsilon = 1
         self.epsilon_min = 0.001
         self.epsilon_decay = 0.999
-        self.batch_size = 64
+        self.batch_size = 32
         self.epochs = 5
-        self.sampleSize = 512
+        self.sampleSize = 128
 
-        # memory
-        self.memSize = 4096
-        self.memory = [None]*self.memSize
-        self.memp = 0
-        self.choose = 0.5
         self.gameCount = 0
 
         # build model
@@ -91,12 +86,12 @@ class Game:
         print(f"{winText[result]} W : {w}, B : {b}")
         reward = result/2
         self.episode[-1] = (self.episode[-1][0], reward)
+        memory = []
         for st, v in self.episode[::-1]:
             rw = (1-self.alpha)*v + self.alpha*reward
-            self.memory[self.memp%self.memSize] = (st, rw)
-            self.memp += 1
+            memory.append((st, rw))
             reward = self.gamma*rw
-        self.replay()
+        self.replay(memory)
         return result
 
     def onBoard(self, buf):
@@ -151,24 +146,19 @@ class Game:
             if v > maxv: maxp, maxnst, maxv = h, nst, v
         return maxnst, maxp, maxv
 
-    def replay(self):
-        if self.memp < self.sampleSize: return
-
-        if self.memp < self.memSize:
-            sample = random.sample(self.memory[:self.memp], self.sampleSize)
-        else:
-            sample = random.sample(self.memory, self.sampleSize)
-        xarray = np.array([k[0] for k in sample])
-        yarray = np.array([k[1] for k in sample])
+    def replay(self, memory):
+        xarray = np.array([k[0] for k in memory])
+        yarray = np.array([k[1] for k in memory])
 
         r = self.model.fit(xarray, yarray,
                        epochs=self.epochs,
                        batch_size=self.batch_size)
 
         # save checkpoint
-        saveFile = Game.cpPath.format(self.gameCount)
-        self.model.save_weights(saveFile)
-        print(f"Save weights : {saveFile}")
+        if self.gameCount%10 == 0:
+            saveFile = Game.cpPath.format(self.gameCount)
+            self.model.save_weights(saveFile)
+            print(f"Save weights : {saveFile}")
 
         if self.epsilon > self.epsilon_min: self.epsilon *= self.epsilon_decay
 
