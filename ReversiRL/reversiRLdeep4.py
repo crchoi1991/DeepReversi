@@ -7,7 +7,7 @@ from tensorflow import keras
 import os.path
 
 class Game:
-    cpPath = "training_deep3/cp_{0:06}.ckpt"
+    cpPath = "training_deep4/cp_{0:06}.ckpt"
 
     def __init__(self):
         # parameters
@@ -16,8 +16,8 @@ class Game:
         self.epsilon = 1
         self.epsilon_min = 0.001
         self.epsilon_decay = 0.999
-        self.batch_size = 32
-        self.epochs = 4
+        self.batch_size = 64
+        self.epochs = 5
         self.sampleSize = 512
 
         # memory
@@ -109,14 +109,14 @@ class Game:
 
     def buildModel(self):
         self.model = keras.Sequential([
-            keras.layers.Dense(2048, input_dim=64, activation="sigmoid"),
-            keras.layers.Dense(1024, activation="relu"),
-            keras.layers.Dense(1024, activation="relu"),
-            keras.layers.Dense(1024, activation="relu"),
+            keras.layers.Dense(512, input_dim=64, activation="sigmoid"),
+            keras.layers.Dense(512, activation="sigmoid"),
+            keras.layers.Dense(512, activation="sigmoid"),
+            keras.layers.Dense(256, activation="sigmoid"),
             keras.layers.Dense(1, activation="sigmoid")
         ])
         self.model.compile(loss="mean_squared_error",
-            optimizer=keras.optimizers.Adam(learning_rate=0.01))
+            optimizer=keras.optimizers.Adam(learning_rate=0.0001))
 
         # Load weights
         dir = os.path.dirname(Game.cpPath)
