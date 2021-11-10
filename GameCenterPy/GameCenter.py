@@ -9,252 +9,265 @@ import pygame
 import copy
 from pygame.locals import *
 
-FPS = 10 # frames per second to update the screen
-ANIMATIONSPEED = 25 # integer from 1 to 100, higher is faster animation
-
-HintTile, WhiteTile, BlackTile, EmptyTile = 0, 1, 2, 3
+FPS = 10
 SpaceSize = 50
 XMargin, YMargin = 10, 10
-WindowWidth, WindowHeight = SpaceSize*8+XMargin*2, SpaceSize*8+YMargin*2
+WindowWidth, WindowHeight = SpaceSize*8+XMargin+120, SpaceSize*8+YMargin+40
 
-#              R    G    B
-White      = (255, 255, 255)
-Black      = (  0,   0,   0)
-GREEN      = (  0, 155,   0)
-BRIGHTBLUE = (  0,  50, 255)
+White = (255, 255, 255)
+Black = (0, 0, 0)
+GridColor = (0, 0, 0)
+TextColor = (255, 255, 255)
+HintColor = (0, 50, 255)
 
-TEXTBGCOLOR1 = BRIGHTBLUE
-TEXTBGCOLOR2 = GREEN
-GRIDLINECOLOR = Black
-TEXTCOLOR = White
-HintColor = (200, 200, 0)
-
-def playerTurn(board):
-    movexy = None
-    while movexy == None:
-        checkForQuit()
-        for event in pygame.event.get():
-            if event.type == MOUSEBUTTONUP:
-                mousex, mousey = event.pos
-                #if newGameRect.collidepoint( (mousex, mousey) ): return True
-                movexy = getSpaceClicked(mousex, mousey)
-                if movexy != None and not board[movexy] != 0: movexy = None
-
-        # Draw the game board.
-        drawBoard(board)
-        #drawInfo(board, playerTile, computerTile, turn)
-
-        # Draw the "New Game" and "Hints" buttons.
-        #DISPLAYSURF.blit(newGameSurf, newGameRect)
-        #DISPLAYSURF.blit(hintsSurf, hintsRect)
-
-        MAINCLOCK.tick(FPS)
-        pygame.display.update()
-
-    # Make the move and end the turn.
-    makeMove(board, playerTile, movexy[0], movexy[1], True)
-
-def runGame():
-    # Reset the board and game.
-    mainBoard, hintCount = getNewBoard()
-    turn = WhiteTile
-
-    # Draw the starting board and ask the player what color they want.
-    drawBoard(mainBoard)
-    playerTile, computerTile = WhiteTile, BlackTile
-
-    # Make the Surface and Rect objects for the "New Game" and "Hints" buttons
-    newGameSurf = FONT.render('New Game', True, TEXTCOLOR, TEXTBGCOLOR2)
-    newGameRect = newGameSurf.get_rect()
-    newGameRect.topright = (WindowWidth - 8, 10)
-    hintsSurf = FONT.render('Hints', True, TEXTCOLOR, TEXTBGCOLOR2)
-    hintsRect = hintsSurf.get_rect()
-    hintsRect.topright = (WindowWidth - 8, 40)
-
-    while True: # main game loop
-        # Keep looping for player and computer's turns.
-        if turn == playerTile: playerTurn(mainBoard)
-        else:
-            # Draw the board.
-            drawBoard(mainBoard)
-            drawInfo(mainBoard, playerTile, computerTile, turn)
-
-            # Draw the "New Game" and "Hints" buttons.
-            DISPLAYSURF.blit(newGameSurf, newGameRect)
-            DISPLAYSURF.blit(hintsSurf, hintsRect)
-
-            # Make the move and end the turn.
-            hints = [i for i in range(64) if board[i] == HintTile]
-            p = random.choice(hints)
-            makeMove(mainBoard, computerTile, p, True)
-        turn ^= 3
-
-    # Display the final score.
-    drawBoard(mainBoard)
-    scores = getScoreOfBoard(mainBoard)
-
-    # Determine the text of the message to display.
-    if scores[playerTile] > scores[computerTile]:
-        text = 'You beat the computer by %s points! Congratulations!' % \
-               (scores[playerTile] - scores[computerTile])
-    elif scores[playerTile] < scores[computerTile]:
-        text = 'You lost. The computer beat you by %s points.' % \
-               (scores[computerTile] - scores[playerTile])
-    else:
-        text = 'The game was a tie!'
-
-    textSurf = FONT.render(text, True, TEXTCOLOR, TEXTBGCOLOR1)
-    textRect = textSurf.get_rect()
-    textRect.center = (int(WindowWidth / 2), int(WindowHeight / 2))
-    DISPLAYSURF.blit(textSurf, textRect)
-
-    # Display the "Play again?" text with Yes and No buttons.
-    text2Surf = BIGFONT.render('Play again?', True, TEXTCOLOR, TEXTBGCOLOR1)
-    text2Rect = text2Surf.get_rect()
-    text2Rect.center = (int(WindowWidth / 2), int(WindowHeight / 2) + 50)
-
-    # Make "Yes" button.
-    yesSurf = BIGFONT.render('Yes', True, TEXTCOLOR, TEXTBGCOLOR1)
-    yesRect = yesSurf.get_rect()
-    yesRect.center = (int(WindowWidth / 2) - 60, int(WindowHeight / 2) + 90)
-
-    # Make "No" button.
-    noSurf = BIGFONT.render('No', True, TEXTCOLOR, TEXTBGCOLOR1)
-    noRect = noSurf.get_rect()
-    noRect.center = (int(WindowWidth / 2) + 60, int(WindowHeight / 2) + 90)
-
-    while True:
-        # Process events until the user clicks on Yes or No.
-        checkForQuit()
-        for event in pygame.event.get(): # event handling loop
-            if event.type == MOUSEBUTTONUP:
-                mousex, mousey = event.pos
-                if yesRect.collidepoint( (mousex, mousey) ):
-                    return True
-                elif noRect.collidepoint( (mousex, mousey) ):
-                    return False
-        DISPLAYSURF.blit(textSurf, textRect)
-        DISPLAYSURF.blit(text2Surf, text2Rect)
-        DISPLAYSURF.blit(yesSurf, yesRect)
-        DISPLAYSURF.blit(noSurf, noRect)
-        pygame.display.update()
-        MAINCLOCK.tick(FPS)
-
-
-def translateBoardToPixelCoord(x, y):
-    return XMargin+x*SpaceSize+SpaceSize//2, YMargin+y*SpaceSize+SpaceSize//2
-
-def animateTileChange(tilesToFlip, tileColor, additionalTile):
-    additionalTileColor = White if tileColor == WhiteTile else Black
-    additionalTileX, additionalTileY = translateBoardToPixelCoord(additionalTile[0], additionalTile[1])
-    pygame.draw.circle(DISPLAYSURF, additionalTileColor, (additionalTileX, additionalTileY), SpaceSize//2-4)
-    pygame.display.update()
-
-    for rgbValues in range(0, 255, int(ANIMATIONSPEED * 2.55)):
-        if tileColor == WhiteTile:
-            color = tuple([rgbValues] * 3) # rgbValues goes from 0 to 255
-        elif tileColor == BlackTile:
-            color = tuple([255 - rgbValues] * 3) # rgbValues goes from 255 to 0
-
-        for x, y in tilesToFlip:
-            centerx, centery = translateBoardToPixelCoord(x, y)
-            pygame.draw.circle(DISPLAYSURF, color, (centerx, centery), int(SpaceSize / 2) - 4)
-        pygame.display.update()
-        MAINCLOCK.tick(FPS)
-        checkForQuit()
-
-def drawBoard(board):
+def drawBoard():
     # Draw background of board.
-    DISPLAYSURF.blit(BGIMAGE, BGIMAGE.get_rect())
+    displaySurf.blit(bgImage, bgImage.get_rect())
 
     # Draw grid lines of the board.
     for i in range(8+1):
         x = i * SpaceSize + XMargin
-        pygame.draw.line(DISPLAYSURF, GRIDLINECOLOR, (x, YMargin), (x, YMargin+8*SpaceSize))
+        pygame.draw.line(displaySurf, GridColor, (x, YMargin), (x, YMargin+8*SpaceSize))
         y = i * SpaceSize + YMargin
-        pygame.draw.line(DISPLAYSURF, GRIDLINECOLOR, (XMargin, y), (XMargin+8*SpaceSize, y))
+        pygame.draw.line(displaySurf, GridColor, (XMargin, y), (XMargin+8*SpaceSize, y))
 
     # Draw the Black & White tiles or hint spots.
     for i in range(64):
-        centerx, centery = translateBoardToPixelCoord(i%8, i//8)
-        if board[i] == WhiteTile:
-            pygame.draw.circle(DISPLAYSURF, White, (centerx, centery), SpaceSize//2-4)
-        elif board[i] == BlackTile:
-            pygame.draw.circle(DISPLAYSURF, Black, (centerx, centery), SpaceSize//2-4)
-        elif board[i] == HintTile:
-            pygame.draw.rect(DISPLAYSURF, HintColor, (centerx-8, centery-8, 16, 16))
+        cx, cy = getCenter(i)
+        if board[i] == 1:
+            pygame.draw.circle(displaySurf, White, (cx, cy), SpaceSize//2-4)
+        elif board[i] == 2:
+            pygame.draw.circle(displaySurf, Black, (cx, cy), SpaceSize//2-4)
+        elif board[i] == 0:
+            pygame.draw.rect(displaySurf, HintColor, (cx-8, cy-8, 16, 16))
 
-def getSpaceClicked(mousex, mousey):
-    x, y = (mousex-XMargin)//SpaceSize, (mousey-YMargin)//SpaceSize
-    return None if x < 0 or x >= 8 or y < 0 or y >= 8 else y*8+x
-
-def drawInfo(board, playerTile, computerTile, turn):
+def drawInfo():
     # Draws scores and whose turn it is at the bottom of the screen.
-    scores = getScoreOfBoard(board)
-    scoreSurf = FONT.render("Player Score: %s    Computer Score: %s    %s's Turn" % (str(scores[playerTile]), str(scores[computerTile]), turn.title()), True, TEXTCOLOR)
+    scores = getScores()
+    colors = ( "", "White", "Black" )
+    str = f"White: {scores[0]:2}   Black: {scores[1]:2} Turn: {colors[turn]}"
+    scoreSurf = normalFont.render(str, True, TextColor)
     scoreRect = scoreSurf.get_rect()
     scoreRect.bottomleft = (10, WindowHeight - 5)
-    DISPLAYSURF.blit(scoreSurf, scoreRect)
+    displaySurf.blit(scoreSurf, scoreRect)
+    if players[1] != 'user' and players[2] != 'user':
+        displaySurf.blit(userGameSurf, userGameRect)
 
-def getNewBoard():
-    board = [EmptyTile]*64
-    board[27], board[28], board[35], board[36] = WhiteTile, BlackTile, BlackTile, WhiteTile
-    board[20], board[29], board[34], board[43] = HintTile, HintTile, HintTile, HintTile
+def getCenter(p):
+    return XMargin+(p%8)*SpaceSize+SpaceSize//2, YMargin+(p//8)*SpaceSize+SpaceSize//2
+
+def getFlipTiles(board, p, t):
+    dxy = ((1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1))
+    x, y = p%8, p//8
+    flips = []
+    for dx, dy in dxy:
+        isFlip = False
+        tf = []
+        nx, ny = x+dx, y+dy
+        while nx >= 0 and nx < 8 and ny >= 0 and ny < 8:
+            np = ny*8+nx
+            if board[np] == t:
+                isFlip = True
+                break
+            if board[np] != t^3: break
+            tf.append(np)
+            nx, ny = nx+dx, ny+dy
+        if isFlip: flips+=tf
+    return flips
+
+def flipTiles(p):
+    flips = getFlipTiles(board, p, turn)
+    print(flips)
+    for rgb in range(0, 255, 50):
+        color = tuple([rgb]*3) if turn == 1 else tuple([255-rgb]*3)
+        for t in flips:
+            cx, cy = getCenter(t)
+            pygame.draw.circle(displaySurf, color, (cx, cy), SpaceSize//2 - 4)
+        pygame.display.update()
+        time.sleep(1/FPS)
+    for t in flips: board[t] = turn
+
+def getHints():
+    hc = 0
+    for i in range(64):
+        if board[i] == 1 or board[i] == 2: continue
+        board[i] = 3
+        ft = getFlipTiles(i, turn)
+        if len(ft) >= 1:
+            board[i] = 0
+            hc += 1
+    return hc
+
+def getClickPosition(x, y):
+    x, y = (x-XMargin)//SpaceSize, (y-YMargin)//SpaceSize
+    return None if x < 0 or x >= 8 or y < 0 or y >= 8 else y*8+x
+
+def newBoard():
+    board = [3]*64
+    board[27], board[28], board[35], board[36] = 1, 2, 2, 1
+    board[20], board[29], board[34], board[43] = 0, 0, 0, 0
     return board, 4
 
-def getBoardWithValidMoves(board, tile):
-    # Returns a new board with hint markings.
-    dupeBoard = copy.deepcopy(board)
-
-    for x, y in getValidMoves(dupeBoard, tile):
-        dupeBoard[x][y] = HINT_TILE
-    return dupeBoard
-
-
-def getScoreOfBoard(board):
-    xscore, oscore = 0, 0
+def getScores():
+    wscore, bscore = 0, 0
     for i in range(64):
-        if board[i] == WhiteTile: xscore += 1
-        elif board[i] == BlackTile: oscore += 1
-    return {WhiteTile:xscore, BlackTile:oscore}
+        if board[i] == 1: wscore += 1
+        elif board[i] == 2: bscore += 1
+    return (wscore, bscore)
 
+def sendReady():
+    if players[turn] == 'user': return
+    mesg = "0068 bd "
+    for i in range(64): mesg += str(board[i])
+    print(f"sendReady() : {mesg}")
+    players[turn].send(mesg.encode())
 
-def makeMove(board, tile, p, realMove=False):
-    if board[p] != HintTile: return False
-    board[xstart][ystart] = tile
-    animateTileChange(tilesToFlip, tile, p)
-    for i in tilesToFlip: board[i] = tile
+def sendPrerun(p):
+    global turn
+    pboard = [k for k in board]
+    if pboard[p] != 0: return False
+    pboard[p] = turn
+    ft = getFlipTiles(pboard, p, turn)
+    for f in ft: pboard[f] = turn
+    getHints(pboard, turn^3)
     return True
 
-def checkForQuit():
-    for event in pygame.event.get((QUIT, KEYUP)): # event handling loop
+def place(p):
+    global turn, hintCount
+    if board[p] != 0: return False
+    board[p] = turn
+    flipTiles(p)
+    turn ^= 3
+    hintCount = getHints()
+    if hintCount > 0:
+        sendReady()
+        return True
+    turn ^= 3
+    hintCount = getHints()
+    if hintCount > 0:
+        sendReady()
+        return True
+    onQuitGame()
+    return False
+
+def onStartGame():
+    global board, hintCount, turn
+    board, hintCount = newBoard()
+    turn = 1
+    for i in range(1, 3):
+        if players[i] == 'user': continue
+        mesg = f"0008 st 000{i}"
+        players[i].send(mesg.encode())
+    sendReady()
+
+def onQuitGame():
+    board, hintCount = newBoard()
+    w, b = getScores()
+    for i in range(1, 3):
+        if players[i] == 'user': continue
+        mesg = f"0008 qt {w:02}{b:02}"
+        players[i].send(mesg.encode())
+    players = [0, None, None]
+
+def onUserGame():
+    if players[0]==2 or players[1] == 'user' or players[2] == 'user': return
+    while True:
+        c = random.randrange(1, 3)
+        if players[c] == None: break
+    players[c] = 'user'
+    players[0] += 1
+    if players[0] == 2: onStartGame()
+
+def onUser(x, y):
+    p = getClickPosition(x, y)
+    if p == None or board[p] != 0: return
+    place(p)
+    
+def onConnect(sock):
+    cSock, addr = sock.accept()
+    print(f"Connection from {addr}")
+    readSocks.append(cSock)
+    if players[0]==2:
+        cSock.close()
+        return
+    while True:
+        c = random.randrange(1, 3)
+        if players[c] == None: break
+    players[c] = cSock
+    players[0] += 1
+    if players[0] == 2: onStartGame()
+            
+def onRecv(sock):
+    buf = sock.recv(4)
+    len = int(buf.decode())
+    buf = sock.recv(len).decode()
+    ss = buf.split()
+    if ss[0] == 'ab': onAbort()
+    elif ss[0] == 'pt':
+        p = int(ss[1])
+        place(p)
+    elif ss[0] == 'pr':
+        p = int(ss[1])
+        sendPrerun(p)
+    
+def onIdle():
+    drawBoard()
+    drawInfo()
+    pygame.display.update()
+    # Process events
+    for event in pygame.event.get():
         if event.type == QUIT or (event.type == KEYUP and event.key == K_ESCAPE):
-            pygame.quit()
-            sys.exit()
+            return False
+        elif event.type == MOUSEBUTTONUP:
+            mousex, mousey = event.pos
+            if userGameRect.collidepoint( (mousex, mousey) ): onUserGame()
+            elif players[turn] == 'user': onUser(mousex, mousey)
+    return True
 
+# Create a socket for listen
+listenSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+listenSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-global MAINCLOCK, DISPLAYSURF, FONT, BIGFONT, BGIMAGE
+# Bind address to listen socket
+listenSock.bind(('', 8791))
 
+# Listen socket
+listenSock.listen(5)
+
+# Connected client sockets
+readSocks = [listenSock]
+
+# Initialize PyGame
 pygame.init()
-MAINCLOCK = pygame.time.Clock()
-DISPLAYSURF = pygame.display.set_mode((WindowWidth, WindowHeight))
+displaySurf = pygame.display.set_mode((WindowWidth, WindowHeight))
 pygame.display.set_caption("Game Center")
-FONT = pygame.font.Font('freesansbold.ttf', 16)
-BIGFONT = pygame.font.Font('freesansbold.ttf', 32)
+normalFont = pygame.font.Font('freesansbold.ttf', 16)
+bigFont = pygame.font.Font('freesansbold.ttf', 32)
 
 # Set up the background image.
-boardImage = pygame.image.load('flippyboard.png')
-# Use smoothscale() to stretch the board image to fit the entire board:
+boardImage = pygame.image.load('board.png')
 boardImage = pygame.transform.smoothscale(boardImage, (8 * SpaceSize, 8 * SpaceSize))
 boardImageRect = boardImage.get_rect()
 boardImageRect.topleft = (XMargin, YMargin)
-BGIMAGE = pygame.image.load('flippybackground.png')
-# Use smoothscale() to stretch the background image to fit the entire window:
-BGIMAGE = pygame.transform.smoothscale(BGIMAGE, (WindowWidth, WindowHeight))
-BGIMAGE.blit(boardImage, boardImageRect)
+bgImage = pygame.image.load('bg.png')
+bgImage = pygame.transform.smoothscale(bgImage, (WindowWidth, WindowHeight))
+bgImage.blit(boardImage, boardImageRect)
+
+# Setup buttons
+userGameSurf = normalFont.render("User Game", True, TextColor)
+userGameRect = userGameSurf.get_rect()
+userGameRect.topright = (WindowWidth - 8, 10)
+
+# Create board
+board, hintCount = newBoard()
+players = [ 0, None, None ]
+turn = 1
 
 # Run the main game.
 while True:
-    if runGame() == False: break
-
-
+    reads, _, _ = select.select(readSocks, [], [], 1/FPS)
+    for s in reads:
+        if s == listenSock: onConnect(s)
+        else: onRecv(s)
+    if not onIdle(): break
+pygame.quit()
