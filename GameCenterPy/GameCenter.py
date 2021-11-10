@@ -77,7 +77,6 @@ def getFlipTiles(board, p, t):
 
 def flipTiles(p):
     flips = getFlipTiles(board, p, turn)
-    print(flips)
     for rgb in range(0, 255, 50):
         color = tuple([rgb]*3) if turn == 1 else tuple([255-rgb]*3)
         for t in flips:
@@ -87,12 +86,12 @@ def flipTiles(p):
         time.sleep(1/FPS)
     for t in flips: board[t] = turn
 
-def getHints():
+def getHints(board, turn):
     hc = 0
     for i in range(64):
         if board[i] == 1 or board[i] == 2: continue
         board[i] = 3
-        ft = getFlipTiles(i, turn)
+        ft = getFlipTiles(board, i, turn)
         if len(ft) >= 1:
             board[i] = 0
             hc += 1
@@ -119,7 +118,6 @@ def sendReady():
     if players[turn] == 'user': return
     mesg = "0068 bd "
     for i in range(64): mesg += str(board[i])
-    print(f"sendReady() : {mesg}")
     players[turn].send(mesg.encode())
 
 def sendPrerun(p):
@@ -130,6 +128,9 @@ def sendPrerun(p):
     ft = getFlipTiles(pboard, p, turn)
     for f in ft: pboard[f] = turn
     getHints(pboard, turn^3)
+    mesg = "0068 pr "
+    for i in range(64): mesg += str(pboard[i])
+    players[turn].send(mesg.encode())
     return True
 
 def place(p):
@@ -138,12 +139,12 @@ def place(p):
     board[p] = turn
     flipTiles(p)
     turn ^= 3
-    hintCount = getHints()
+    hintCount = getHints(board, turn)
     if hintCount > 0:
         sendReady()
         return True
     turn ^= 3
-    hintCount = getHints()
+    hintCount = getHints(board, turn)
     if hintCount > 0:
         sendReady()
         return True
@@ -161,12 +162,23 @@ def onStartGame():
     sendReady()
 
 def onQuitGame():
-    board, hintCount = newBoard()
+    global players
     w, b = getScores()
     for i in range(1, 3):
         if players[i] == 'user': continue
         mesg = f"0008 qt {w:02}{b:02}"
         players[i].send(mesg.encode())
+        readSocks.remove(players[i])
+    players = [0, None, None]
+
+def onAbort():
+    global players
+    w, b = getScores()
+    for i in range(1, 3):
+        if players[i] == 'user': continue
+        mesg = f"0004 ab "
+        players[i].send(mesg.encode())
+        readSocks.remove(players[i])
     players = [0, None, None]
 
 def onUserGame():
@@ -198,10 +210,18 @@ def onConnect(sock):
     if players[0] == 2: onStartGame()
             
 def onRecv(sock):
-    buf = sock.recv(4)
-    len = int(buf.decode())
-    buf = sock.recv(len).decode()
-    ss = buf.split()
+    buf = b""
+    while len(buf) < 4:
+        t = sock.recv(4-len(buf))
+        if t == None or len(t) == 0: return False
+        buf += t
+    length = int(buf.decode())
+    buf = b""
+    while len(buf) < length:
+        t = sock.recv(length-len(buf))
+        if t == None or len(t) == 0: return False
+        buf += t
+    ss = buf.decode().split()
     if ss[0] == 'ab': onAbort()
     elif ss[0] == 'pt':
         p = int(ss[1])
@@ -209,6 +229,7 @@ def onRecv(sock):
     elif ss[0] == 'pr':
         p = int(ss[1])
         sendPrerun(p)
+    return True
     
 def onIdle():
     drawBoard()
@@ -268,6 +289,6 @@ while True:
     reads, _, _ = select.select(readSocks, [], [], 1/FPS)
     for s in reads:
         if s == listenSock: onConnect(s)
-        else: onRecv(s)
+        elif not onRecv(s): onAbort()
     if not onIdle(): break
 pygame.quit()
